@@ -1,0 +1,101 @@
+﻿#pragma kernel CSFinal
+#pragma kernel CSAddForce
+#pragma enable_d3d11_debug_symbols
+
+#include "D:\unityProj\Wind\Assets\Wind\ComputeShader\WindMotor.hlsl"
+
+bool IsAdd;
+half3 MoveVelocity;
+half VoxelSize;//体素大小
+
+half deltaTime; //deltaTime
+half4 EmittorPos;  //风场发射器的位置 （计算位置用来计算衰减的距离）
+half4 EmittorDir; //风场发射器当前方向
+
+half4x4 WindSpaceMatrix; //物体转到风场空间下的矩阵
+half4x4 InvWindSpaceMatrix;//逆
+
+float3 WindFieldCenter;
+
+RWTexture3D<half3> InputResult;
+RWTexture3D<half3> OutputResult;
+RWTexture2D<half4> Test;  //测试用纹理
+
+//Input[id].xyz = WorldVelocity.xzy
+//id中的[121,121,8]表示世界坐标下[121,8,121]的点 但是纹理是 256 256 16 的方法存储
+//第一项受力项 参数: 风源位置 物体位置 衰减系数。我感觉风力衰减可以用简单函数？模拟.
+half3 WindForceCompute(half4 sourcePos, half4 objPos,half4 windDir, half coffe,half dt)
+{
+    half3 Dis = (objPos - sourcePos).xyz;
+    
+    if(length(Dis) == 0)
+    {
+        return 0;
+    }
+    
+    half x = length(Dis) > 5.0f ? 0 :  256.0f / (length(Dis) * length(Dis)); //取得距离 //Result_Ping[id] += AddForce;
+    Dis = (normalize(Dis));
+   
+    
+    //风场的强度还会和风的方向有关在风场方向的
+    return    x * MoveVelocity ; //\cross(Dis,windDir.xyz)
+}
+
+
+
+
+[numthreads(8, 8, 8)]
+void CSAddForce(uint3 id : SV_DispatchThreadID, uint3 Tid : SV_GroupThreadID)
+{
+    half4x4 test = InvWindSpaceMatrix;
+    //float3 wCellPos = mul(test, half4(id.xzy * VoxelSize, 1.0f)).xyz;
+    float3 wCellPos = (id.xzy - float3(128, 8, 128)) * VoxelSize + WindFieldCenter;
+    float3 velocityWS = 0.0f;
+    if(DirectionalMotorBufferCount > 0)
+    {
+        for (int i = 0; i < DirectionalMotorBufferCount;i++)
+        {
+            ApplyMotorDirectional(VoxelSize, wCellPos, DirectionalMotorBuffer[i], velocityWS);
+
+        }
+    }
+    if (OmniMotorBufferCount > 0)
+    {
+        for (int i = 0; i < OmniMotorBufferCount; i++)
+        {
+            ApplyMotorOmni(VoxelSize ,wCellPos, OmniMotorBuffer[i], velocityWS);
+        }
+    }
+    if (VortexMotorBufferCount > 0)
+    {
+        for (int i = 0; i < VortexMotorBufferCount; i++)
+        {
+            ApplyMotorVortex(VoxelSize, wCellPos, VortexMotorBuffer[i], velocityWS);
+        }
+    }
+    if (MovingMotorBufferCount > 0)
+    {
+        for (int i = 0; i < MovingMotorBufferCount; i++)
+        {
+            ApplyMotorMoving(VoxelSize, wCellPos, MovingMotorBuffer[i], velocityWS);
+        }
+    }
+    
+    float3 LastVelocity = InputResult[id];
+    OutputResult[id] = LastVelocity + velocityWS;
+}
+[numthreads(8, 8, 8)]
+void CSFinal(uint3 id : SV_DispatchThreadID)
+{
+    half4 wEmittorPos = EmittorPos;
+    half4 wCellPos = mul(InvWindSpaceMatrix, half4(id.xyz * VoxelSize, 1.0f));
+    //参数一 Debug (1.15 力的赋值似乎有问题，不能单纯按照距离来赋值，毕竟风场的力也不算很大)
+    half3 AddForce = WindForceCompute(wEmittorPos, wCellPos, EmittorDir, 5.0f, deltaTime);
+    //我感觉需要做一个收敛，似乎不是质量守恒的
+      
+    // 2.11 把这里改成xy轴看看为什么球到了上面就会往上飞
+    if (id.z == 8)
+    {
+        Test[float2(id.xy)] = half4((InputResult[id] + 1) / 2, 1.0f);
+    }
+}

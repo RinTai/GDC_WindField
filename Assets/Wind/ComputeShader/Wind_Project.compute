@@ -1,0 +1,158 @@
+﻿#pragma kernel CSProj_1;
+#pragma kernel CSProj_2;
+#pragma kernel CSProj_3;
+#pragma enable_d3d11_debug_symbols
+
+float deltaTime;
+RWTexture3D<half3> InputResult;
+RWTexture3D<half2> Div_Pressure;
+RWTexture3D<half3> OutputResult;
+
+//散度场 一个核 第一步
+half WindProjectCompute_Div(uint3 id, half dt)
+{
+    half h = 1.0f / 16.0f;
+    
+     //索引
+    uint3 Self = half3(id.x, id.y, id.z);
+    uint3 Front = half3(id.x + 1, id.y, id.z);
+    uint3 Back = half3(id.x - 1, id.y, id.z);
+    uint3 Up = half3(id.x, id.y + 1, id.z);
+    uint3 Down = half3(id.x, id.y - 1, id.z);
+    uint3 Left = half3(id.x, id.y, id.z + 1);
+    uint3 Right = half3(id.x, id.y, id.z - 1);
+    
+    half3 D_Self = InputResult[Self];
+    half3 D_Front = id.x + 1 < 256 ? InputResult[Front] : D_Self;
+    half3 D_Back = id.x - 1 >= 0 ? InputResult[Back] : D_Self;
+    half3 D_Up = id.y + 1 < 256 ? InputResult[Up] : D_Self;
+    half3 D_Down = id.y - 1 >= 0 ? InputResult[Down] : D_Self;
+    half3 D_Left = id.z + 1 < 16 ? InputResult[Left] : D_Self;
+    half3 D_Right = id.z - 1 >= 0 ? InputResult[Right] : D_Self;
+    
+    
+    
+    // 散度场
+    half div = -0.333333f * h * (D_Front.x - D_Back.x +
+                                      D_Up.z - D_Down.z +
+                                      D_Left.y - D_Right.y);
+    
+    return div;
+}
+//压力，第二步
+half WindProjectCompute_Pres(uint3 id, half dt)
+{
+    half h = 1.0f / 16.0f;
+    
+     //索引
+    uint3 Self = half3(id.x, id.y, id.z);
+    uint3 Front = half3(id.x + 1, id.y, id.z);
+    uint3 Back = half3(id.x - 1, id.y, id.z);
+    uint3 Up = half3(id.x, id.y + 1, id.z);
+    uint3 Down = half3(id.x, id.y - 1, id.z);
+    uint3 Left = half3(id.x, id.y, id.z + 1);
+    uint3 Right = half3(id.x, id.y, id.z - 1);
+    /*
+    half D_Self = Div_Pressure[Self].y;
+    half D_Front = id.x + 1 < 256 ? Div_Pressure[Front].y : -D_Self;
+    half D_Back = id.x - 1 >= 0 ? Div_Pressure[Back].y : -D_Self;
+    half D_Up = id.y + 1 < 256 ? Div_Pressure[Up].y : -D_Self;
+    half D_Down = id.y - 1 >= 0 ? Div_Pressure[Down].y : -D_Self;
+    half D_Left = id.z + 1 < 16 ? Div_Pressure[Left].y : -D_Self;
+    half D_Right = id.z - 1 >= 0 ? Div_Pressure[Right].y : -D_Self;
+*/
+    int num = 0;
+    half Sum = 0;
+    if ((int) id.x + 1 < 256)
+    {
+        num++;
+        Sum = Sum + Div_Pressure[Front].y;
+    }
+    if ((int) id.x - 1 >= 0)
+    {
+        num++;
+        Sum = Sum + Div_Pressure[Back].y;
+    }
+    if ((int) id.y + 1 < 256)
+    {
+        num++;
+        Sum = Sum + Div_Pressure[Up].y;
+    }
+    if ((int) id.y - 1 >= 0)
+    {
+        num++;
+        Sum = Sum + Div_Pressure[Down].y;
+    }
+    if ((int) id.z + 1 < 16)
+    {
+        num++;
+        Sum = Sum + Div_Pressure[Left].y;
+    }
+    if ((int) id.z - 1 >= 0)
+    {
+        num++;
+        Sum = Sum + Div_Pressure[Right].y;
+    }
+    half pressure = (Div_Pressure[Self].x + Sum) / num;
+    
+    return pressure;
+}
+//第四项第三步
+half3 WindProjectCompute_Proj(uint3 id, half dt)
+{
+    half U, V, W;
+    half h = 1.0f / 16.0f;
+    
+     //索引
+    half3 Self = half3(id.x, id.y, id.z);
+    half3 Front = half3(id.x + 1, id.y, id.z);
+    half3 Back = half3(id.x - 1, id.y, id.z);
+    half3 Up = half3(id.x, id.y + 1, id.z);
+    half3 Down = half3(id.x, id.y - 1, id.z);
+    half3 Left = half3(id.x, id.y, id.z + 1);
+    half3 Right = half3(id.x, id.y, id.z - 1);
+    
+    half D_Self = Div_Pressure[Self].y;
+    half D_Front = id.x + 1 < 256 ? Div_Pressure[Front].y : D_Self;
+    half D_Back = id.x - 1 >= 0 ? Div_Pressure[Back].y : D_Self;
+    half D_Up = id.y + 1 < 256 ? Div_Pressure[Up].y : D_Self;
+    half D_Down = id.y - 1 >= 0 ? Div_Pressure[Down].y : D_Self;
+    half D_Left = id.z + 1 < 16 ? Div_Pressure[Left].y : D_Self;
+    half D_Right = id.z - 1 >= 0 ? Div_Pressure[Right].y : D_Self;
+    
+     //Input[id].xyz = Wvelocity.xzy  交换的前提
+    U = InputResult[Self].x;
+    V = InputResult[Self].y;
+    W = InputResult[Self].z;
+    
+    
+    //梯度相减得到旋度
+    U -= (D_Front - D_Back) / (3 * h);
+    W -= (D_Up - D_Down) / (3 * h);
+    V -= (D_Left - D_Right) / (3 * h);
+    
+    
+    
+    half3 project = half3(U, V, W);
+    
+    return project;
+}
+
+[numthreads(8, 8, 8)]
+void CSProj_1(uint3 id : SV_DispatchThreadID)
+{
+    float div = WindProjectCompute_Div(id, deltaTime);
+    Div_Pressure[id] = float2(div, 0);
+}
+[numthreads(8, 8, 8)]
+void CSProj_2(uint3 id : SV_DispatchThreadID)
+{
+    float pre = WindProjectCompute_Pres(id, deltaTime);
+    Div_Pressure[id] = float2(Div_Pressure[id].x, pre);
+}
+[numthreads(8, 8, 8)]
+void CSProj_3(uint3 id : SV_DispatchThreadID)
+{
+    float3 project = WindProjectCompute_Proj(id, deltaTime);
+    OutputResult[id] = project;
+}

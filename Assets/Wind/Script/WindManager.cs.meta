@@ -1,0 +1,17 @@
+fileFormatVersion: 2
+guid: 1290671541654e242a1f8b408415e604
+MonoImporter:
+  externalObjects: {}
+  serializedVersion: 2
+  defaultReferences:
+  - wComputeShader_WindMotor: {fileID: 7200000, guid: 8a189594ef43aa843a78a65934c1b42e, type: 3}
+  - wComputeShader_Diffusion: {fileID: 7200000, guid: 8617001770e190344b34a3ab90766ace, type: 3}
+  - wComputeShader_Advect: {fileID: 7200000, guid: 310dbc66c7432814da7205d12d13054f, type: 3}
+  - wComputeShader_Project: {fileID: 7200000, guid: 2319ad9130aa7014796c93047eb21f13, type: 3}
+  - windEmitter: {instanceID: 0}
+  - windTexture: {instanceID: 0}
+  executionOrder: 0
+  icon: {instanceID: 0}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 

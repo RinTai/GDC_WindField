@@ -1,0 +1,79 @@
+﻿#pragma kernel CSDiffusion
+#pragma enable_d3d11_debug_symbols
+
+half PopVelocity; //扩散参数
+float deltaTime;
+RWTexture3D<half3> InputResult;
+RWTexture3D<half3> OutputResult;
+
+//迭代十次
+half3 WindDiffusionCompute_PingPong(half diff, uint3 id, half dt)
+{
+    half adt = diff * dt  * 16;
+    
+    
+    
+    int num = 0;
+     //索引
+    uint3 Self = uint3(id.x, id.y, id.z);
+    uint3 Front = uint3(id.x + 1, id.y, id.z);
+    uint3 Back = uint3(id.x - 1, id.y, id.z);
+    uint3 Up = uint3(id.x, id.y + 1, id.z);
+    uint3 Down = uint3(id.x, id.y - 1, id.z);
+    uint3 Left = uint3(id.x, id.y, id.z + 1);
+    uint3 Right = uint3(id.x, id.y, id.z - 1);
+    
+    half3 V_Self = InputResult[Self];
+    half3 Sum = 0;
+    if((int)id.x +1 < 256)
+    {
+        num++;
+        Sum = Sum + InputResult[Front];
+    }
+    if ((int) id.x - 1 >= 0)
+    {
+        num++;
+        Sum = Sum + InputResult[Back];
+    }
+    if ((int) id.y + 1 < 256)
+    {
+        num++;
+        Sum = Sum + InputResult[Up];
+    }
+    if ((int) id.y - 1 >= 0)
+    {
+        num++;
+        Sum = Sum + InputResult[Down];
+    }
+    if ((int) id.z + 1 < 16)
+    {
+        num++;
+        Sum = Sum + InputResult[Left];
+    }
+    if ((int) id.z - 1 >= 0)
+    {
+        num++;
+        Sum = Sum + InputResult[Right];
+    }
+    
+    /*
+    half3 V_Front = id.x + 1 < 256 ? InputResult[Front] : V_Self;
+    half3 V_Back = id.x - 1 >= 0 ? InputResult[Back] : V_Self;
+    half3 V_Up = id.y + 1 < 256 ? InputResult[Up] : V_Self;
+    half3 V_Down = id.y - 1 >= 0 ? InputResult[Down] : V_Self;
+    half3 V_Left = id.z + 1 < 16 ? InputResult[Left] : V_Self;
+    half3 V_Right = id.z - 1 >= 0 ? InputResult[Right] : V_Self;
+   */
+    half3 diffusion_ping = (V_Self + adt * Sum) / (1 + num * adt);
+    
+   
+    
+    return diffusion_ping;
+}
+[numthreads(8,8,8)]
+void CSDiffusion (uint3 id : SV_DispatchThreadID)
+{
+    float3 mid = WindDiffusionCompute_PingPong(PopVelocity, id, deltaTime);
+    
+    OutputResult[id] = mid;
+}
