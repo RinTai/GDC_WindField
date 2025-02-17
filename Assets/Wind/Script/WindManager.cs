@@ -27,7 +27,7 @@ public class WindManager : MonoBehaviour
     private int WindFieldSizeY = 16;
     private int WindFieldSizeZ = 256;
     private static int MAXMOTOR = 10;
-    private static float VoxelSize = 0.5f;
+    private static float VoxelSize = 1;
     private static WindManager m_Instance;
     public static WindManager Instance
     {
@@ -136,10 +136,10 @@ public class WindManager : MonoBehaviour
     {
         UpdateComputeShader();
 
-        WindMotorAdd();
-        Diffusion();
-        Advect();
-       Project();
+        WindMotorAdd(); //√
+        Diffusion(); //√
+        Advect(); //√
+       Project(); //×
 
         cmd.BeginSample("Test");
         //Test
@@ -172,7 +172,10 @@ public class WindManager : MonoBehaviour
 
     public void OnDestroy()
     {
-
+        windField_Div_Pressure.Release();
+        windField_Result_Pong.Release();
+        windField_Result_Ping.Release();
+        Test3D.Release();
     }
     /// <summary>
     /// 初始化各项风场纹理
@@ -235,6 +238,7 @@ public class WindManager : MonoBehaviour
 
     void UpdateComputeShader()
     {
+        
         /*
         wComputeShader.SetVector(emittorPos, windEmitter.GetPos());
         wComputeShader.SetVector(emittorDir, windEmitter.GetDir());
@@ -277,6 +281,7 @@ public class WindManager : MonoBehaviour
         //更新风力位置
         UpdateWindMotor();
 
+        wComputeShader_WindMotor.SetVector("WindFieldSize", new Vector3(WindFieldSizeX, WindFieldSizeY, WindFieldSizeZ));
         cmd.BeginSample("Force");
         wComputeShader_WindMotor.SetFloat("VoxelSize", VoxelSize);
         Vector3 translation = this.transform.position * VoxelSize+ new Vector3(WindFieldSizeX * VoxelSize/ 2.0f, WindFieldSizeY  * VoxelSize/ 2.0f, WindFieldSizeZ * VoxelSize / 2.0f);
@@ -302,8 +307,8 @@ public class WindManager : MonoBehaviour
     void Diffusion()
     {
         cmd.BeginSample("Diffusion");
-
-        wComputeShader_Diffusion.SetFloat("PopVelocity", 1);
+        wComputeShader_Diffusion.SetVector("WindFieldSize", new Vector3(WindFieldSizeX, WindFieldSizeY, WindFieldSizeZ));
+        wComputeShader_Diffusion.SetFloat("PopVelocity", 1f);
         wComputeShader_Diffusion.SetFloat(deltaTime, Time.deltaTime);
         //ping
         cmd.SetComputeTextureParam(wComputeShader_Diffusion, kernelHandle_Diffusion, kernel_In, windField_Result_Ping);
@@ -316,7 +321,7 @@ public class WindManager : MonoBehaviour
         cmd.SetComputeTextureParam(wComputeShader_Diffusion, kernelHandle_Diffusion, kernel_Out, windField_Result_Ping);
         cmd.DispatchCompute(wComputeShader_Diffusion, kernelHandle_Diffusion, WindFieldSizeX / 8, WindFieldSizeZ / 8, WindFieldSizeY / 8);
 
-        for (int i = 0; i < 3; i++)
+        for (int i = 0; i < 2; i++)
         {
             cmd.SetComputeTextureParam(wComputeShader_Diffusion, kernelHandle_Diffusion, kernel_In, windField_Result_Ping);
             cmd.SetComputeTextureParam(wComputeShader_Diffusion, kernelHandle_Diffusion, kernel_Out, windField_Result_Pong);
@@ -337,6 +342,7 @@ public class WindManager : MonoBehaviour
     void Advect()
     {
         cmd.BeginSample("Advect");
+        wComputeShader_Advect.SetVector("WindFieldSize", new Vector3(WindFieldSizeX, WindFieldSizeY, WindFieldSizeZ));
         wComputeShader_Advect.SetFloat(deltaTime, Time.deltaTime);
         cmd.SetComputeTextureParam(wComputeShader_Advect, kernelHandle_Advect_Positive, kernel_In, windField_Result_Ping);
         cmd.SetComputeTextureParam(wComputeShader_Advect, kernelHandle_Advect_Positive, kernel_Out, windField_Result_Pong);
@@ -355,6 +361,7 @@ public class WindManager : MonoBehaviour
     void Project()
     {
         cmd.BeginSample("Project");
+        wComputeShader_Project.SetVector("WindFieldSize", new Vector3(WindFieldSizeX, WindFieldSizeY, WindFieldSizeZ));
         wComputeShader_Project.SetFloat(deltaTime, Time.deltaTime);
         cmd.SetComputeTextureParam(wComputeShader_Project, kernelHandle_Project_1, kernel_In, windField_Result_Pong);
         cmd.SetComputeTextureParam(wComputeShader_Project, kernelHandle_Project_1, div_Pressure, windField_Div_Pressure);

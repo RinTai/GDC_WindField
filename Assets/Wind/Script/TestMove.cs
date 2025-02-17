@@ -29,7 +29,8 @@ public class TestMove : MonoBehaviour
         float x1 =  0 + radius * Mathf.Cos(progress);
         float y1 = 0 + radius* Mathf.Sin(progress);
         velocity = new Vector3(x1, 0, y1) - this.transform.position;
-        this.transform.position = new Vector3(x1, 0, y1);
+        //this.transform.position = new Vector3(x1, 0, y1);
+        this.transform.Rotate(0, speed * Time.deltaTime, 0);
         
     }
 }

@@ -9,15 +9,17 @@ Shader "Custom/GrassTest"
         [HideInInspector]
         _WindField("WindField",3D) = "white"{}
         _VoxelSize("VoxelSize",Float) = 1.0
+        _ForceStrength("ForceStrength",Float) = 1.0
     }
     SubShader
     {
         Tags { "RenderType"="Opaque" }
         LOD 200
-
+        
         
         Pass
         {            
+        Cull Off
         HLSLPROGRAM
         #pragma vertex vert 
         #pragma fragment frag
@@ -34,6 +36,7 @@ Shader "Custom/GrassTest"
         sampler3D _WindField;
         float3 WindFieldCenter;
         float VoxelSize;
+        float _ForceStrength;
 
         float3 WindFieldOffset;
 
@@ -41,12 +44,14 @@ Shader "Custom/GrassTest"
         {
             float4 vertex : POSITION;
             float3 texcoord : TEXCOORD0;
+            float3 normal : NORMAL;
         };
 
         struct v2f
         {
             float4 Pos : SV_POSITION;
             float3 texcoord : TEXCOORD0;
+            float3 normal : NORMAL;
         };
 
         v2f vert(appdata input)
@@ -60,11 +65,12 @@ Shader "Custom/GrassTest"
             velocityOffset =  tex3Dlod(_WindField,float4(id.xyz ,0));
          
             if(wPos.y > 1.0)
-                mPos = wPos + float4(clamp(velocityOffset.x,-2,2),0,clamp(velocityOffset.z,-2,2),0);
+                mPos = wPos +  normalize(float4(clamp(velocityOffset.x,-2,2),0,clamp(velocityOffset.z,-2,2),0));
                
                 output.Pos = mul(UNITY_MATRIX_VP,mPos);
             //output.Pos = UnityObjectToClipPos(mPos);
             
+            output.normal = mul(unity_ObjectToWorld,input.normal);
             output.texcoord = tex3Dlod(_WindField,float4(id.xyz,0));
 
             return output;
@@ -72,7 +78,8 @@ Shader "Custom/GrassTest"
 
             float4 frag(v2f input) : SV_TARGET
             {
-                return float4(input.texcoord,1);
+                float diffuse = (dot(input.normal,_WorldSpaceLightPos0) + 1) / 2;
+                return float4(0,diffuse,0,1);
             }
 
         ENDHLSL

@@ -3,6 +3,7 @@
 #pragma enable_d3d11_debug_symbols
 
 float deltaTime; //deltaTime
+float3 WindFieldSize;
 
 RWTexture3D<half3> InputResult;
 RWTexture3D<half3> OutputResult;
@@ -12,15 +13,15 @@ RWTexture3D<half3> OutputResult;
 //正向平流(只操作 返回值)
 void WindPositiveAdvectCompute(uint3 id, half dt)
 {
-    half dt0 = 16  * dt;
+    half dt0 = WindFieldSize.y * dt;
     
     half3 UVW = InputResult[id].xzy;
     
-    float3 XYZ = float3(id.x + dt0 * UVW.x, id.y + dt0 * UVW.y, id.z + dt0 * UVW.z);
+    float3 XZY = float3(id.x + dt0 * UVW.x, id.y + dt0 * UVW.y, id.z + dt0 * UVW.z);
     
-    half x = clamp(XYZ.x, 0.5, 256 + 0.5);
-    half y = clamp(XYZ.y, 0.5, 256 + 0.5);
-    half z = clamp(XYZ.z, 0.5, 16 + 0.5);
+    half x = clamp(XZY.x, 0.5, WindFieldSize.x + 0.5);
+    half y = clamp(XZY.y, 0.5, WindFieldSize.z + 0.5);
+    half z = clamp(XZY.z, 0.5, WindFieldSize.y + 0.5);
     
 
 
@@ -38,50 +39,74 @@ void WindPositiveAdvectCompute(uint3 id, half dt)
     
     
     uint3 temp = uint3(x0, y0, z0);
-    if(temp.x >= 0 && temp.x <= 255 && temp.y >= 0&& temp.y <= 255 &&temp.z>= 0 && temp.z <= 15) OutputResult[temp] += xd * yd * zd * UVW;
-     temp = uint3(x1, y0, z0);
-     if(temp.x >= 0 && temp.x <= 255 && temp.y >= 0&& temp.y <= 255 &&temp.z>= 0 && temp.z <= 15) OutputResult[temp] += xd * yd * zd * UVW;
+    if (temp.x >= 0 && temp.x < WindFieldSize.x && temp.y >= 0 && temp.y < WindFieldSize.z && temp.z >= 0 && temp.z < WindFieldSize.y)
+    {
+        OutputResult[temp] += xd * yd * zd * UVW;
+    }
+    temp = uint3(x1, y0, z0);
+    if (temp.x >= 0 && temp.x < WindFieldSize.x && temp.y >= 0 && temp.y < WindFieldSize.z && temp.z >= 0 && temp.z < WindFieldSize.y)
+    {
+        OutputResult[temp] += xd * yd * zd * UVW;
+    }
     temp = uint3(x0, y1, z0);
-     if(temp.x >= 0 && temp.x <= 255 && temp.y >= 0&& temp.y <= 255 &&temp.z>= 0 && temp.z <= 15) OutputResult[temp] += xd * yd * zd * UVW;
+    if (temp.x >= 0 && temp.x < WindFieldSize.x && temp.y >= 0 && temp.y < WindFieldSize.z && temp.z >= 0 && temp.z < WindFieldSize.y)
+    {
+        OutputResult[temp] += xd * yd * zd * UVW;
+    }
     temp = uint3(x0, y0, z1);
-     if(temp.x >= 0 && temp.x <= 255 && temp.y >= 0&& temp.y <= 255 &&temp.z>= 0 && temp.z <= 15) OutputResult[temp] += xd * yd * zd * UVW;
+    if (temp.x >= 0 && temp.x < WindFieldSize.x && temp.y >= 0 && temp.y < WindFieldSize.z && temp.z >= 0 && temp.z < WindFieldSize.y)
+    {
+        OutputResult[temp] += xd * yd * zd * UVW;
+    }
     temp = uint3(x1, y1, z0);
-     if(temp.x >= 0 && temp.x <= 255 && temp.y >= 0&& temp.y <= 255 &&temp.z>= 0 && temp.z <= 15) OutputResult[temp] += xd * yd * zd * UVW;
+    if (temp.x >= 0 && temp.x < WindFieldSize.x && temp.y >= 0 && temp.y < WindFieldSize.z && temp.z >= 0 && temp.z < WindFieldSize.y)
+    {
+        OutputResult[temp] += xd * yd * zd * UVW;
+    }
     temp = uint3(x1, y0, z1);
-     if(temp.x >= 0 && temp.x <= 255 && temp.y >= 0&& temp.y <= 255 &&temp.z>= 0 && temp.z <= 15) OutputResult[temp] += xd * yd * zd * UVW;
+    if (temp.x >= 0 && temp.x < WindFieldSize.x && temp.y >= 0 && temp.y < WindFieldSize.z && temp.z >= 0 && temp.z < WindFieldSize.y)
+    {
+        OutputResult[temp] += xd * yd * zd * UVW;
+    }
     temp = uint3(x0, y1, z1);
-     if(temp.x >= 0 && temp.x <= 255 && temp.y >= 0&& temp.y <= 255 &&temp.z>= 0 && temp.z <= 15) OutputResult[temp] += xd * yd * zd * UVW;
+    if (temp.x >= 0 && temp.x < WindFieldSize.x && temp.y >= 0 && temp.y < WindFieldSize.z && temp.z >= 0 && temp.z < WindFieldSize.y)
+    {
+        OutputResult[temp] += xd * yd * zd * UVW;
+    }
     temp = uint3(x1, y1, z1);
-     if(temp.x >= 0 && temp.x <= 255 && temp.y >= 0&& temp.y <= 255 &&temp.z>= 0 && temp.z <= 15) OutputResult[temp] += xd * yd * zd * UVW;
+    if (temp.x >= 0 && temp.x < WindFieldSize.x && temp.y >= 0 && temp.y < WindFieldSize.z && temp.z >= 0 && temp.z < WindFieldSize.y)
+    {
+        OutputResult[temp] += xd * yd * zd * UVW;
+    }
 
 }
 
 //第三项平流项 //这个是反向平流
 half3 WindNegativeAdvectCompute(uint3 id, half dt)
 {
-    half dt0 =  16 * dt;
+    half dt0 = WindFieldSize.y * dt;
     
     half3 UVW = InputResult[id].xzy;
     
-    half3 XYZ = half3(id.x - dt0 * UVW.x, id.y - dt0 * UVW.y, id.z - dt0 * UVW.z);
+    half3 XZY = half3(id.x - dt0 * UVW.x, id.y - dt0 * UVW.y, id.z - dt0 * UVW.z);
    
     
-    half x = clamp(XYZ.x, 0.5, 256 + 0.5);
-    half y = clamp(XYZ.y, 0.5, 256 + 0.5);
-    half z = clamp(XYZ.z, 0.5, 16 + 0.5);
+    half x = clamp(XZY.x, 0.5, WindFieldSize.x - 0.5);
+    half y = clamp(XZY.y, 0.5, WindFieldSize.z - 0.5);
+    half z = clamp(XZY.z, 0.5, WindFieldSize.y - 0.5);
     
 
-    half x0 = UVW.x == 0 ? int(x) +0.5f : UVW.x >= 0 ? int(x)  : int(x) + 1.0f;
-    half y0 = UVW.y == 0 ? int(y) +0.5f: UVW.y >= 0 ? int(y) : int(y) + 1.0f;
-    half z0 = UVW.z == 0 ? int(z) +0.5f: UVW.z >= 0 ? int(z)  : int(z) + 1.0f;
+    half x0 = UVW.x == 0 ? int(x) + 0.5f : UVW.x > 0 ? int(x) : int(x) + 1.0f;
+    half y0 = UVW.y == 0 ? int(y) + 0.5f : UVW.y > 0 ? int(y) : int(y) + 1.0f;
+    half z0 = UVW.z == 0 ? int(z) + 0.5f : UVW.z > 0 ? int(z) : int(z) + 1.0f;
     
-    half x1 = UVW.x == 0 ? x0 - 0.5f  : UVW.x >= 0 ? x0 + 1 : x0 - 1;
-    half y1 = UVW.y == 0 ? y0 - 0.5f: UVW.y >= 0 ? y0 + 1 : y0 - 1;
-    half z1 = UVW.z == 0 ? z0 - 0.5f : UVW.z >= 0 ? z0 + 1 : z0 - 1;
+    half x1 = UVW.x == 0 ? x0  : UVW.x > 0 ? x0 + 1 : x0 - 1;
+    half y1 = UVW.y == 0 ? y0  : UVW.y > 0 ? y0 + 1 : y0 - 1;
+    half z1 = UVW.z == 0 ? z0  : UVW.z > 0 ? z0 + 1 : z0 - 1;
     
-    half xd = (x - x0) / (x1 - x0);
-    half yd = (y - y0) / (y1 - y0);
-    half zd = (z - z0) / (z1 - z0);
+    half xd = x1 - x0 == 0 ? 0.5f :(x - x0) / (x1 - x0);
+    half yd = y1 - y0 == 0 ? 0.5f :(y - y0) / (y1 - y0);
+    half zd = z1 - z0 == 0 ? 0.5f :(z - z0) / (z1 - z0);
     
     
     half3 V000 = InputResult[uint3(x0, y0, z0)];
@@ -93,23 +118,69 @@ half3 WindNegativeAdvectCompute(uint3 id, half dt)
     half3 V011 = InputResult[uint3(x0, y1, z1)];
     half3 V111 = InputResult[uint3(x1, y1, z1)];
     
+    int num = 0;
     float3 velocityWS = 0;
     uint3 temp = uint3(x0, y0, z0);
-    if (temp.x >= 0 && temp.x <= 255 && temp.y >= 0 && temp.y <= 255 && temp.z >= 0 && temp.z <= 15) velocityWS += V000 * (1 - xd) * (1 - yd) * (1 - zd);
+    if (temp.x >= 0 && temp.x <= WindFieldSize.x - 1 && temp.y >= 0 && temp.y <= WindFieldSize.z - 1 && temp.z >= 0 && temp.z <= WindFieldSize.y - 1)
+    {
+        velocityWS += V000 * (1 - xd) * (1 - yd) * (1 - zd);
+    }
+
+    
     temp = uint3(x1, y0, z0);
-    if (temp.x >= 0 && temp.x <= 255 && temp.y >= 0 && temp.y <= 255 && temp.z >= 0 && temp.z <= 15) velocityWS += V100 * xd * (1 - yd) * (1 - zd);
+    if (temp.x >= 0 && temp.x <= WindFieldSize.x - 1 && temp.y >= 0 && temp.y <= WindFieldSize.z - 1 && temp.z >= 0 && temp.z <= WindFieldSize.y - 1)
+    {
+        velocityWS += V100 * xd * (1 - yd) * (1 - zd);
+        num++;
+    }
+
+    
     temp = uint3(x0, y1, z0);
-    if (temp.x >= 0 && temp.x <= 255 && temp.y >= 0 && temp.y <= 255 && temp.z >= 0 && temp.z <= 15)velocityWS += V010 * (1 - xd) * yd * (1 - zd);
+    if (temp.x >= 0 && temp.x <= WindFieldSize.x - 1 && temp.y >= 0 && temp.y <= WindFieldSize.z - 1 && temp.z >= 0 && temp.z <= WindFieldSize.y - 1)
+    {
+        velocityWS += V010 * (1 - xd) * yd * (1 - zd);
+        num++;
+    }
+
+    
     temp = uint3(x0, y0, z1);
-    if (temp.x >= 0 && temp.x <= 255 && temp.y >= 0 && temp.y <= 255 && temp.z >= 0 && temp.z <= 15)velocityWS +=  V001 * (1 - xd) * (1 - yd) * zd;
+    if (temp.x >= 0 && temp.x <= WindFieldSize.x - 1 && temp.y >= 0 && temp.y <= WindFieldSize.z - 1 && temp.z >= 0 && temp.z <= WindFieldSize.y - 1)
+    {
+        velocityWS += V001 * (1 - xd) * (1 - yd) * zd;
+        num++;
+    }
+
+    
     temp = uint3(x1, y1, z0);
-    if (temp.x >= 0 && temp.x <= 255 && temp.y >= 0 && temp.y <= 255 && temp.z >= 0 && temp.z <= 15)velocityWS += V101 * xd * (1 - yd) * zd;
+    if (temp.x >= 0 && temp.x <= WindFieldSize.x - 1 && temp.y >= 0 && temp.y <= WindFieldSize.z - 1 && temp.z >= 0 && temp.z <= WindFieldSize.y - 1)
+    {
+        velocityWS += V101 * xd * (1 - yd) * zd;
+        num++;
+    }
+
     temp = uint3(x1, y0, z1);
-    if (temp.x >= 0 && temp.x <= 255 && temp.y >= 0 && temp.y <= 255 && temp.z >= 0 && temp.z <= 15)velocityWS += V011 * (1 - xd) * yd * zd;
+    if (temp.x >= 0 && temp.x <= WindFieldSize.x - 1 && temp.y >= 0 && temp.y <= WindFieldSize.z - 1 && temp.z >= 0 && temp.z <= WindFieldSize.y - 1)
+    {
+        velocityWS += V011 * (1 - xd) * yd * zd;
+        num++;
+    }
+
+    
     temp = uint3(x0, y1, z1);
-    if (temp.x >= 0 && temp.x <= 255 && temp.y >= 0 && temp.y <= 255 && temp.z >= 0 && temp.z <= 15)velocityWS += V110 * xd * yd * (1 - zd);
+    if (temp.x >= 0 && temp.x <= WindFieldSize.x - 1 && temp.y >= 0 && temp.y <= WindFieldSize.z - 1 && temp.z >= 0 && temp.z <= WindFieldSize.y - 1)
+    {
+        velocityWS += V110 * xd * yd * (1 - zd);
+        num++;
+    }
+
+    
     temp = uint3(x1, y1, z1);
-    if (temp.x >= 0 && temp.x <= 255 && temp.y >= 0 && temp.y <= 255 && temp.z >= 0 && temp.z <= 15)velocityWS += V111 * xd * yd * zd;
+    if (temp.x >= 0 && temp.x <= WindFieldSize.x-1 && temp.y >= 0 && temp.y <= WindFieldSize.z - 1 && temp.z >= 0 && temp.z <= WindFieldSize.y - 1)
+    {
+        velocityWS += V111 * xd * yd * zd;
+        num++;
+    }
+
     
 
     

@@ -64,12 +64,16 @@ void ApplyMotorDirectional(float voxelSize ,float3 cellPosWS, MotorDirectional m
 void ApplyMotorOmni(float voxelSize, float3 cellPosWS, MotorOmni motor, inout float3 velocityWS)
 {
     float3 dir = cellPosWS - motor.position ;
-    float distanceSq = LengthSq(dir);
-    if (distanceSq < motor.radiusSq)
+    if (length(dir) == 0 )
     {
-        velocityWS += dir * motor.force * min(rsqrt(distanceSq), 5) ;
+        return;
+        }
+        float distanceSq = LengthSq(dir);
+        if (distanceSq < motor.radiusSq)
+        {
+            velocityWS += normalize(dir) * motor.force * min(rsqrt(distanceSq), 5);
+        }
     }
-}
 //¾Û·çÔ´
 void ApplyMotorVortex(float voxelSize, float3 cellPosWS, MotorVortex motor, inout float3 velocityWS)
 {
@@ -96,7 +100,11 @@ void ApplyMotorMoving(float voxelSize, float3 cellPosWS, MotorMoving motor, inou
     float moveVelocity = length(motor.moveDir);
     if (distanceSq < motor.radiusSq)
     {
-        float3 blowDir = rsqrt(distanceSq) * dirCur + motor.moveDir + float3(0.0000001f,0.0000001f,0.000001f) ;
+        float3 blowDir = rsqrt(distanceSq) * dirCur * moveVelocity + motor.moveDir  ;
+        if (length(blowDir) == 0)
+        {
+            return;
+        }
         blowDir = normalize(blowDir);
         velocityWS += blowDir * motor.force * moveVelocity;
     }
