@@ -3,6 +3,7 @@
 #pragma kernel CSProj_3;
 #pragma enable_d3d11_debug_symbols
 
+float VoxelSize;
 float3 WindFieldSize;
 float deltaTime;
 RWTexture3D<half3> InputResult;
@@ -10,9 +11,9 @@ RWTexture3D<half2> Div_Pressure;
 RWTexture3D<half3> OutputResult;
 
 //散度场 一个核 第一步
-half WindProjectCompute_Div(uint3 id, half dt)
+half WindProjectCompute_Div(uint3 id, half dt,float voxelSize)
 {
-    half h = 1.0f / 16.0f;
+    half h = voxelSize;
     
      //索引
     uint3 Self = half3(id.x, id.y, id.z);
@@ -34,16 +35,16 @@ half WindProjectCompute_Div(uint3 id, half dt)
     
     
     // 散度场
-    half div = -0.333333f * h * (D_Front.x - D_Back.x +
+    half div = -0.5f * h * (D_Front.x - D_Back.x +
                                       D_Up.z - D_Down.z +
                                       D_Left.y - D_Right.y);
     
     return div;
 }
 //压力，第二步
-half WindProjectCompute_Pres(uint3 id, half dt)
+half WindProjectCompute_Pres(uint3 id, half dt, float voxelSize)
 {
-    half h = 1.0f / 16.0f;
+    half h = voxelSize;
     
      //索引
     uint3 Self = half3(id.x, id.y, id.z);
@@ -100,10 +101,10 @@ half WindProjectCompute_Pres(uint3 id, half dt)
     return pressure;
 }
 //第四项第三步
-half3 WindProjectCompute_Proj(uint3 id, half dt)
+half3 WindProjectCompute_Proj(uint3 id, half dt, float voxelSize)
 {
     half U, V, W;
-    half h = 1.0f / 16.0f;
+    half h = voxelSize;
     
      //索引
     uint3 Self = uint3(id.x, id.y, id.z);
@@ -129,9 +130,9 @@ half3 WindProjectCompute_Proj(uint3 id, half dt)
     
     
     //减梯度得到旋度
-    U -= (D_Front - D_Back) / (3 * h);
-    W -= (D_Up - D_Down) / (3 * h);
-    V -= (D_Left - D_Right) / (3 * h);
+    U -= (D_Front - D_Back) / (2 * h);
+    W -= (D_Up - D_Down) / (2 * h);
+    V -= (D_Left - D_Right) / (2 * h);
     
     
     
@@ -143,18 +144,18 @@ half3 WindProjectCompute_Proj(uint3 id, half dt)
 [numthreads(8, 8, 8)]
 void CSProj_1(uint3 id : SV_DispatchThreadID)
 {
-    float div = WindProjectCompute_Div(id, deltaTime);
+    float div = WindProjectCompute_Div(id, deltaTime,VoxelSize);
     Div_Pressure[id] = float2(div, 0);
 }
 [numthreads(8, 8, 8)]
 void CSProj_2(uint3 id : SV_DispatchThreadID)
 {
-    float pre = WindProjectCompute_Pres(id, deltaTime);
+    float pre = WindProjectCompute_Pres(id, deltaTime,VoxelSize);
     Div_Pressure[id] = float2(Div_Pressure[id].x, pre);
 }
 [numthreads(8, 8, 8)]
 void CSProj_3(uint3 id : SV_DispatchThreadID)
 {
-    float3 project = WindProjectCompute_Proj(id, deltaTime);
+    float3 project = WindProjectCompute_Proj(id, deltaTime,VoxelSize);
     OutputResult[id] = project;
 }

@@ -27,7 +27,8 @@ public class WindManager : MonoBehaviour
     private int WindFieldSizeY = 16;
     private int WindFieldSizeZ = 256;
     private static int MAXMOTOR = 10;
-    private static float VoxelSize = 1;
+    private static float VoxelSize = 1f;
+    private static float PopVelocity = 2f;
     private static WindManager m_Instance;
     public static WindManager Instance
     {
@@ -139,7 +140,7 @@ public class WindManager : MonoBehaviour
         WindMotorAdd(); //√
         Diffusion(); //√
         Advect(); //√
-       Project(); //×
+       Project(); //√
 
         cmd.BeginSample("Test");
         //Test
@@ -308,7 +309,7 @@ public class WindManager : MonoBehaviour
     {
         cmd.BeginSample("Diffusion");
         wComputeShader_Diffusion.SetVector("WindFieldSize", new Vector3(WindFieldSizeX, WindFieldSizeY, WindFieldSizeZ));
-        wComputeShader_Diffusion.SetFloat("PopVelocity", 1f);
+        wComputeShader_Diffusion.SetFloat("PopVelocity",   PopVelocity);
         wComputeShader_Diffusion.SetFloat(deltaTime, Time.deltaTime);
         //ping
         cmd.SetComputeTextureParam(wComputeShader_Diffusion, kernelHandle_Diffusion, kernel_In, windField_Result_Ping);
@@ -333,6 +334,10 @@ public class WindManager : MonoBehaviour
             cmd.DispatchCompute(wComputeShader_Diffusion, kernelHandle_Diffusion, WindFieldSizeX / 8, WindFieldSizeZ / 8, WindFieldSizeY / 8);
 
         }
+
+   
+
+
         cmd.EndSample("Diffusion");
 
     }
@@ -361,6 +366,7 @@ public class WindManager : MonoBehaviour
     void Project()
     {
         cmd.BeginSample("Project");
+        wComputeShader_Project.SetFloat("VoxelSize", VoxelSize);
         wComputeShader_Project.SetVector("WindFieldSize", new Vector3(WindFieldSizeX, WindFieldSizeY, WindFieldSizeZ));
         wComputeShader_Project.SetFloat(deltaTime, Time.deltaTime);
         cmd.SetComputeTextureParam(wComputeShader_Project, kernelHandle_Project_1, kernel_In, windField_Result_Pong);
@@ -368,7 +374,7 @@ public class WindManager : MonoBehaviour
         cmd.DispatchCompute(wComputeShader_Project, kernelHandle_Project_1, WindFieldSizeX / 8, WindFieldSizeZ / 8, WindFieldSizeY / 8);
         // wComputeShader.Dispatch(kernelHandle_Project_1, WindFieldSizeX / 8, WindFieldSizeY / 8, WindFieldSizeZ / 8);
 
-        for (int i = 0; i < 10; i++)
+        for (int i = 0; i < 20; i++)
         {
             //这里导致了X轴扩散方向大于了Z轴，解决一下__1.24
             cmd.SetComputeTextureParam(wComputeShader_Project, kernelHandle_Project_2, div_Pressure, windField_Div_Pressure);

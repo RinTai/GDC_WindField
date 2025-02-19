@@ -14,7 +14,7 @@ Shader "Custom/GrassTest"
     SubShader
     {
         Tags { "RenderType"="Opaque" }
-        LOD 200
+        LOD 20
         
         
         Pass
@@ -58,14 +58,16 @@ Shader "Custom/GrassTest"
         {
             v2f output;
             float4 wPos = mul(unity_ObjectToWorld,input.vertex)  ;
-            float4 id = ((wPos + float4(128,8,128,0)) - float4(WindFieldCenter,0.0f)) ;
+            float4 id = ((wPos + float4(128,0,128,0)) - float4(WindFieldCenter,0.0f)) ;
             id = float4(float(id.x) / 256.0f,float(id.z) / 256.0f ,float(id.y) / 16.0f,0.0);
             float3 velocityOffset = float3(0,0,0);
             float4 mPos = wPos ;
-            velocityOffset =  tex3Dlod(_WindField,float4(id.xyz ,0));
+            velocityOffset =   tex3Dlod(_WindField,float4(id.xyz ,0)) + 0.00001f;
          
             if(wPos.y > 1.0)
-                mPos = wPos +  normalize(float4(clamp(velocityOffset.x,-2,2),0,clamp(velocityOffset.z,-2,2),0));
+                {
+                    mPos = wPos + (float4(clamp(_ForceStrength *velocityOffset.x,-0.5,0.5),0,clamp(_ForceStrength *velocityOffset.z,-0.5,0.5),0)) ;
+                }
                
                 output.Pos = mul(UNITY_MATRIX_VP,mPos);
             //output.Pos = UnityObjectToClipPos(mPos);
@@ -78,7 +80,7 @@ Shader "Custom/GrassTest"
 
             float4 frag(v2f input) : SV_TARGET
             {
-                float diffuse = (dot(input.normal,_WorldSpaceLightPos0) + 1) / 2;
+                float diffuse = (dot(input.normal,float3(-1,-1,0)) + 1) / 2;
                 return float4(0,diffuse,0,1);
             }
 

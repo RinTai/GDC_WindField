@@ -96,18 +96,19 @@ void ApplyMotorMoving(float voxelSize, float3 cellPosWS, MotorMoving motor, inou
     moveLen = min(max(0, moveLen), motor.moveLen);
     float3 curPos = moveLen * motor.moveDir + motor.prePosition ;
     float3 dirCur = cellPosWS - curPos;
-    float distanceSq = LengthSq(dirCur) + 0.00000001f;
+    float distanceSq = LengthSq(dirCur) + 0.001f;
     float moveVelocity = length(motor.moveDir);
     if (distanceSq < motor.radiusSq)
     {
-        float3 blowDir = rsqrt(distanceSq) * dirCur * moveVelocity + motor.moveDir  ;
+        float3 blowDir = rsqrt(distanceSq) * float3(dirCur.x, dirCur.y, dirCur.z) * moveVelocity + motor.moveDir;
         if (length(blowDir) == 0)
         {
             return;
         }
         blowDir = normalize(blowDir);
-        velocityWS += blowDir * motor.force * moveVelocity;
+        velocityWS += blowDir * motor.force * min(1,moveVelocity)  ;
     }
 }
+
 
 #endif

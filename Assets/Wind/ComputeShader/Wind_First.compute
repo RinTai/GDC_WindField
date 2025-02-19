@@ -16,12 +16,13 @@ half4x4 WindSpaceMatrix; //物体转到风场空间下的矩阵
 half4x4 InvWindSpaceMatrix;//逆
 
 float3 WindFieldCenter;
+float3 WindFieldSize;
 
 RWTexture3D<half3> InputResult;
 RWTexture3D<half3> OutputResult;
 RWTexture2D<half4> Test;  //测试用纹理
 
-//Input[id].xyz = WorldVelocity.xzy
+//Input[id].xyz = WorldVelocity.xzy 也就是说这里面的Z代表高度 前面两项是xy
 //id中的[121,121,8]表示世界坐标下[121,8,121]的点 但是纹理是 256 256 16 的方法存储
 //第一项受力项 参数: 风源位置 物体位置 衰减系数。我感觉风力衰减可以用简单函数？模拟.
 half3 WindForceCompute(half4 sourcePos, half4 objPos,half4 windDir, half coffe,half dt)
@@ -41,6 +42,22 @@ half3 WindForceCompute(half4 sourcePos, half4 objPos,half4 windDir, half coffe,h
     return    x * MoveVelocity ; //\cross(Dis,windDir.xyz)
 }
 
+void BoundDetection(uint3 id,float dt)
+{
+    float3 velocity = InputResult[id];
+    if(id.x  + 1>= WindFieldSize.x || id.x - 1 < 0)
+    {
+        InputResult[id] = (1 + velocity.x * 0.3) * float3(0, velocity.yz);
+    }
+    if (id.y + 1 >= WindFieldSize.z || id.y - 1 < 0)
+    {
+        InputResult[id] = (1 + velocity.y * 0.3) * float3(velocity.x, 0, velocity.z);
+    }
+    if (id.z + 1 >= WindFieldSize.y || id.z - 1 < 0)
+    {
+        InputResult[id] = (1 + velocity.z * 0.3) * float3(velocity.xy, 0);
+    }
+}
 
 
 
@@ -92,7 +109,9 @@ void CSFinal(uint3 id : SV_DispatchThreadID)
     //参数一 Debug (1.15 力的赋值似乎有问题，不能单纯按照距离来赋值，毕竟风场的力也不算很大)
     half3 AddForce = WindForceCompute(wEmittorPos, wCellPos, EmittorDir, 5.0f, deltaTime);
     //我感觉需要做一个收敛，似乎不是质量守恒的
-      
+    
+    //一个简单的碰撞边缘的尝试
+    //BoundDetection(id, deltaTime);
     // 2.11 把这里改成xy轴看看为什么球到了上面就会往上飞
     if (id.z == 8)
     {
