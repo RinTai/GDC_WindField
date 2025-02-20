@@ -2,6 +2,7 @@
 #pragma enable_d3d11_debug_symbols
 
 float3 WindFieldSize;
+float VoxelSize;
 half PopVelocity; //扩散参数
 float deltaTime;
 RWTexture3D<half3> InputResult;
@@ -10,7 +11,7 @@ RWTexture3D<half3> OutputResult;
 //迭代十次
 half3 WindDiffusionCompute_PingPong(half diff, uint3 id, half dt)
 {
-    half adt = diff * dt  ;
+    half adt = VoxelSize * diff * dt  ;
     
     
     

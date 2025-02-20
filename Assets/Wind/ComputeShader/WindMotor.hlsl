@@ -54,7 +54,7 @@ float DistanceSq(float3 pos1, float3 pos2)
 //·½Ïò·ç
 void ApplyMotorDirectional(float voxelSize ,float3 cellPosWS, MotorDirectional motor, inout float3 velocityWS)
 {
-    float distanceSq = DistanceSq(cellPosWS, motor.position );
+    float distanceSq = DistanceSq(cellPosWS, motor.position);
     if (distanceSq < motor.radiusSq)
     {
         velocityWS += motor.force;
@@ -67,7 +67,7 @@ void ApplyMotorOmni(float voxelSize, float3 cellPosWS, MotorOmni motor, inout fl
     if (length(dir) == 0 )
     {
         return;
-        }
+    }
         float distanceSq = LengthSq(dir);
         if (distanceSq < motor.radiusSq)
         {

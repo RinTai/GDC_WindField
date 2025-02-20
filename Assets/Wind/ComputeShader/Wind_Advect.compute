@@ -3,6 +3,7 @@
 #pragma enable_d3d11_debug_symbols
 
 float deltaTime; //deltaTime
+float VoxelSize;
 float3 WindFieldSize;
 
 RWTexture3D<half3> InputResult;
@@ -13,7 +14,7 @@ RWTexture3D<half3> OutputResult;
 //正向平流(只操作 返回值)
 void WindPositiveAdvectCompute(uint3 id, half dt)
 {
-    half dt0 = WindFieldSize.y * dt;
+    half dt0 = VoxelSize * dt;
     
     half3 UVW = InputResult[id].xzy;
     
@@ -84,7 +85,7 @@ void WindPositiveAdvectCompute(uint3 id, half dt)
 //第三项平流项 //这个是反向平流
 half3 WindNegativeAdvectCompute(uint3 id, half dt)
 {
-    half dt0 = WindFieldSize.y * dt;
+    half dt0 = VoxelSize * dt;
     
     half3 UVW = InputResult[id].xzy;
     

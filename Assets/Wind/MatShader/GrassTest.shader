@@ -66,7 +66,7 @@ Shader "Custom/GrassTest"
          
             if(wPos.y > 1.0)
                 {
-                    mPos = wPos + (float4(clamp(_ForceStrength *velocityOffset.x,-0.5,0.5),0,clamp(_ForceStrength *velocityOffset.z,-0.5,0.5),0)) ;
+                    mPos = wPos + (float4(clamp(_ForceStrength *velocityOffset.x,-1,1),0,clamp(_ForceStrength *velocityOffset.z,-1,1),0)) ;
                 }
                
                 output.Pos = mul(UNITY_MATRIX_VP,mPos);

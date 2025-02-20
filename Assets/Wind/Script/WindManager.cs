@@ -59,7 +59,8 @@ public class WindManager : MonoBehaviour
     private RenderTexture Test3D;
     private RenderTexture windField_Result_Ping;
     private RenderTexture windField_Result_Pong;
-    private RenderTexture windField_Div_Pressure;
+    private RenderTexture windField_Div_Pressure_Ping;
+    private RenderTexture windField_Div_Pressure_Pong;
 
     private List<WindMotor> windMotors = new List<WindMotor>(MAXMOTOR);
     private List<MotorDirectional> directionalMotorList = new List<MotorDirectional>(MAXMOTOR);
@@ -90,7 +91,8 @@ public class WindManager : MonoBehaviour
         deltaTime = "deltaTime",
         wfSpaceMatrix = "WindSpaceMatrix",
         wfSpaceMatrixInv = "InvWindSpaceMatrix",
-        div_Pressure = "Div_Pressure",
+        Div_Pressure_Input = "Div_Pressure_Input",
+        Div_Pressure_Output = "Div_Pressure_Output",
         Directional_BufferId = "DirectionalMotorBuffer",
         Directional_NumId = "DirectionalMotorBufferCount",
         Omni_BufferId = "OmniMotorBuffer",
@@ -173,7 +175,7 @@ public class WindManager : MonoBehaviour
 
     public void OnDestroy()
     {
-        windField_Div_Pressure.Release();
+        windField_Div_Pressure_Ping.Release();
         windField_Result_Pong.Release();
         windField_Result_Ping.Release();
         Test3D.Release();
@@ -185,37 +187,45 @@ public class WindManager : MonoBehaviour
     {
         windField_Result_Ping = new RenderTexture(WindFieldSizeX, WindFieldSizeZ, 0);
         windField_Result_Pong = new RenderTexture(WindFieldSizeX, WindFieldSizeZ, 0);
-        windField_Div_Pressure = new RenderTexture(WindFieldSizeX, WindFieldSizeZ, 0);
+        windField_Div_Pressure_Ping = new RenderTexture(WindFieldSizeX, WindFieldSizeZ, 0);
+        windField_Div_Pressure_Pong = new RenderTexture(WindFieldSizeX,WindFieldSizeZ, 0);
         Test3D = new RenderTexture(WindFieldSizeX, WindFieldSizeZ, 0);
 
         windField_Result_Ping.name = "Result_Ping";
         windField_Result_Pong.name = "Result_Pong";
-        windField_Div_Pressure.name = "Div_Pressure";
+        windField_Div_Pressure_Ping.name = "Div_Pressure_Ping";
+        windField_Div_Pressure_Pong.name = "Div_Pressure_Pong";
         Test3D.name = "FinalResult";
 
         windField_Result_Ping.dimension = TextureDimension.Tex3D;
         windField_Result_Pong.dimension = TextureDimension.Tex3D;
-        windField_Div_Pressure.dimension = TextureDimension.Tex3D;
+        windField_Div_Pressure_Ping.dimension = TextureDimension.Tex3D;
+        windField_Div_Pressure_Pong.dimension = TextureDimension.Tex3D;
         Test3D.dimension = TextureDimension.Tex3D;
 
         windField_Result_Ping.format = RenderTextureFormat.ARGBHalf;
         windField_Result_Pong.format = RenderTextureFormat.ARGBHalf;
-        windField_Div_Pressure.format = RenderTextureFormat.ARGBHalf;
+        windField_Div_Pressure_Ping.format = RenderTextureFormat.ARGBHalf;
+        windField_Div_Pressure_Pong.format = RenderTextureFormat.ARGBHalf;
         Test3D.format = RenderTextureFormat.ARGBHalf;
 
         windField_Result_Ping.volumeDepth = WindFieldSizeY;
         windField_Result_Pong.volumeDepth = WindFieldSizeY;
-        windField_Div_Pressure.volumeDepth = WindFieldSizeY;
+        windField_Div_Pressure_Ping.volumeDepth = WindFieldSizeY;
+        windField_Div_Pressure_Pong.volumeDepth = WindFieldSizeY;
+        windField_Div_Pressure_Pong.volumeDepth = WindFieldSizeY;
         Test3D.volumeDepth = WindFieldSizeY;
 
         windField_Result_Ping.enableRandomWrite = true;
         windField_Result_Pong.enableRandomWrite = true;
-        windField_Div_Pressure.enableRandomWrite = true;
+        windField_Div_Pressure_Ping.enableRandomWrite = true;
+        windField_Div_Pressure_Pong.enableRandomWrite = true;
         Test3D.enableRandomWrite = true;
 
         Test3D.filterMode = FilterMode.Bilinear;
 
-        windField_Div_Pressure.Create();
+        windField_Div_Pressure_Ping.Create();
+        windField_Div_Pressure_Pong.Create();
         windField_Result_Pong.Create();
         windField_Result_Ping.Create();
         Test3D.Create();
@@ -308,6 +318,7 @@ public class WindManager : MonoBehaviour
     void Diffusion()
     {
         cmd.BeginSample("Diffusion");
+        wComputeShader_Diffusion.SetFloat("VoxelSize", VoxelSize);
         wComputeShader_Diffusion.SetVector("WindFieldSize", new Vector3(WindFieldSizeX, WindFieldSizeY, WindFieldSizeZ));
         wComputeShader_Diffusion.SetFloat("PopVelocity",   PopVelocity);
         wComputeShader_Diffusion.SetFloat(deltaTime, Time.deltaTime);
@@ -322,7 +333,7 @@ public class WindManager : MonoBehaviour
         cmd.SetComputeTextureParam(wComputeShader_Diffusion, kernelHandle_Diffusion, kernel_Out, windField_Result_Ping);
         cmd.DispatchCompute(wComputeShader_Diffusion, kernelHandle_Diffusion, WindFieldSizeX / 8, WindFieldSizeZ / 8, WindFieldSizeY / 8);
 
-        for (int i = 0; i < 2; i++)
+        for (int i = 0; i < 3; i++)
         {
             cmd.SetComputeTextureParam(wComputeShader_Diffusion, kernelHandle_Diffusion, kernel_In, windField_Result_Ping);
             cmd.SetComputeTextureParam(wComputeShader_Diffusion, kernelHandle_Diffusion, kernel_Out, windField_Result_Pong);
@@ -347,12 +358,9 @@ public class WindManager : MonoBehaviour
     void Advect()
     {
         cmd.BeginSample("Advect");
+        wComputeShader_Advect.SetFloat("VoxelSize", VoxelSize);
         wComputeShader_Advect.SetVector("WindFieldSize", new Vector3(WindFieldSizeX, WindFieldSizeY, WindFieldSizeZ));
         wComputeShader_Advect.SetFloat(deltaTime, Time.deltaTime);
-        cmd.SetComputeTextureParam(wComputeShader_Advect, kernelHandle_Advect_Positive, kernel_In, windField_Result_Ping);
-        cmd.SetComputeTextureParam(wComputeShader_Advect, kernelHandle_Advect_Positive, kernel_Out, windField_Result_Pong);
-        cmd.DispatchCompute(wComputeShader_Advect, kernelHandle_Advect_Positive, WindFieldSizeX / 8, WindFieldSizeZ / 8, WindFieldSizeY / 8);
-
 
         cmd.SetComputeTextureParam(wComputeShader_Advect, kernelHandle_Advect_Negative, kernel_In, windField_Result_Ping);
         cmd.SetComputeTextureParam(wComputeShader_Advect, kernelHandle_Advect_Negative, kernel_Out, windField_Result_Pong);
@@ -361,7 +369,7 @@ public class WindManager : MonoBehaviour
         //wComputeShader.Dispatch(kernelHandle_Advect, WindFieldSizeX / 8, WindFieldSizeY / 8, WindFieldSizeZ / 8);
     }
     /// <summary>
-    /// 风的投影项目(我不确定这个有没有用)
+    /// 风的投影项(我不确定这个有没有用)
     /// </summary>
     void Project()
     {
@@ -370,21 +378,28 @@ public class WindManager : MonoBehaviour
         wComputeShader_Project.SetVector("WindFieldSize", new Vector3(WindFieldSizeX, WindFieldSizeY, WindFieldSizeZ));
         wComputeShader_Project.SetFloat(deltaTime, Time.deltaTime);
         cmd.SetComputeTextureParam(wComputeShader_Project, kernelHandle_Project_1, kernel_In, windField_Result_Pong);
-        cmd.SetComputeTextureParam(wComputeShader_Project, kernelHandle_Project_1, div_Pressure, windField_Div_Pressure);
+        cmd.SetComputeTextureParam(wComputeShader_Project, kernelHandle_Project_1, Div_Pressure_Output, windField_Div_Pressure_Ping);
         cmd.DispatchCompute(wComputeShader_Project, kernelHandle_Project_1, WindFieldSizeX / 8, WindFieldSizeZ / 8, WindFieldSizeY / 8);
         // wComputeShader.Dispatch(kernelHandle_Project_1, WindFieldSizeX / 8, WindFieldSizeY / 8, WindFieldSizeZ / 8);
 
-        for (int i = 0; i < 20; i++)
+        for (int i = 0; i < 10; i++)
         {
             //这里导致了X轴扩散方向大于了Z轴，解决一下__1.24
-            cmd.SetComputeTextureParam(wComputeShader_Project, kernelHandle_Project_2, div_Pressure, windField_Div_Pressure);
+            cmd.SetComputeTextureParam(wComputeShader_Project, kernelHandle_Project_2, Div_Pressure_Input, windField_Div_Pressure_Ping);
+            cmd.SetComputeTextureParam(wComputeShader_Project, kernelHandle_Project_2, Div_Pressure_Output, windField_Div_Pressure_Pong);
             cmd.DispatchCompute(wComputeShader_Project, kernelHandle_Project_2, WindFieldSizeX / 8, WindFieldSizeZ / 8, WindFieldSizeY / 8);
             //wComputeShader.Dispatch(kernelHandle_Project_2,WindFieldSizeX / 8, WindFieldSizeY / 8, WindFieldSizeZ / 8);
+
+            cmd.SetComputeTextureParam(wComputeShader_Project, kernelHandle_Project_2, Div_Pressure_Input, windField_Div_Pressure_Pong);
+            cmd.SetComputeTextureParam(wComputeShader_Project, kernelHandle_Project_2, Div_Pressure_Output, windField_Div_Pressure_Ping);
+            cmd.DispatchCompute(wComputeShader_Project, kernelHandle_Project_2, WindFieldSizeX / 8, WindFieldSizeZ / 8, WindFieldSizeY / 8);
         }
         cmd.SetComputeTextureParam(wComputeShader_Project, kernelHandle_Project_3, kernel_In, windField_Result_Pong);
-        cmd.SetComputeTextureParam(wComputeShader_Project, kernelHandle_Project_3, div_Pressure, windField_Div_Pressure);
+        cmd.SetComputeTextureParam(wComputeShader_Project, kernelHandle_Project_3, Div_Pressure_Input, windField_Div_Pressure_Ping);
         cmd.SetComputeTextureParam(wComputeShader_Project, kernelHandle_Project_3, kernel_Out, Test3D);
         cmd.DispatchCompute(wComputeShader_Project, kernelHandle_Project_3, WindFieldSizeX / 8, WindFieldSizeZ / 8, WindFieldSizeY / 8);
+
+        
         cmd.EndSample("Project");
     }
 
