@@ -19,14 +19,17 @@ struct WindGridCell
 [ExecuteAlways]
 public class WindManager : MonoBehaviour
 {
+    public List<GameObject> goTests;
     public Material test;
     public VisualEffect debugParticle;
+    public VisualEffect particleTest;
     private const string bufferName = "DispatchBuffer";
     CommandBuffer cmd;
     private int WindFieldSizeX = 256;
     private int WindFieldSizeY = 16;
     private int WindFieldSizeZ = 256;
     private static int MAXMOTOR = 10;
+    private static int MAXVERTEX = 65536;
     private static float VoxelSize = 1f;
     private static float PopVelocity = 2f;
     private static WindManager m_Instance;
@@ -41,18 +44,25 @@ public class WindManager : MonoBehaviour
     public ComputeShader wComputeShader_Diffusion;
     public ComputeShader wComputeShader_Advect;
     public ComputeShader wComputeShader_Project;
-    public VisualEffect particleTest;
+    public ComputeShader wComputeShader_Obstacle_SDF;
 
     private delegate void DelayedOperation();
 
+    //提供动力的内核句柄
     private int kernelHandle_WindMotor;
+    //扩散的CS内核句柄
     private int kernelHandle_Diffusion;//内核句柄
+    //平流的内核句柄
     private int kernelHandle_Advect_Positive;
     private int kernelHandle_Advect_Negative;
+   //流体去散度的CS句柄
     private int kernelHandle_Project_1;
     private int kernelHandle_Project_2;
     private int kernelHandle_Project_3;
+   //用于显示用的句柄
     private int kernelHandle_Test;
+    //SDF生成的CS的句柄
+    private int kernelHandle_SDF_Create;
 
     private RenderTexture Test2D;
     //风场的数组，在这里用来测试吧
@@ -61,6 +71,17 @@ public class WindManager : MonoBehaviour
     private RenderTexture windField_Result_Pong;
     private RenderTexture windField_Div_Pressure_Ping;
     private RenderTexture windField_Div_Pressure_Pong;
+
+    private struct Vertex
+    {
+        public Vector3 position;
+        public Vector3 normal;
+        public int ObIndex;
+    }
+    private RenderTexture windField_SDF;//用于记录场内的障碍物的SDF xyz是法线 W是距离
+    private List<MeshFilter> windObstacles = new List<MeshFilter>(16);
+    private List<Vertex> obstacleMeshList = new List<Vertex>();
+    private int windObstacleCount = 0;
 
     private List<WindMotor> windMotors = new List<WindMotor>(MAXMOTOR);
     private List<MotorDirectional> directionalMotorList = new List<MotorDirectional>(MAXMOTOR);
@@ -76,6 +97,7 @@ public class WindManager : MonoBehaviour
     private ComputeBuffer omniMotorBuffer;
     private ComputeBuffer vortexMotorBuffer;
     private ComputeBuffer movingMotorBuffer;
+    private ComputeBuffer obstacleSDFBuffer;
 
     private const string
         kernel_In = "InputResult",
@@ -88,6 +110,8 @@ public class WindManager : MonoBehaviour
         kernel_Project_2 = "CSProj_2",
         kernel_Project_3 = "CSProj_3",
         kernel_Test = "CSFinal",
+        kernel_SDF_Create = "SDF_Create",
+        kernel_SDF = "Obstacle_SDF",
         deltaTime = "deltaTime",
         wfSpaceMatrix = "WindSpaceMatrix",
         wfSpaceMatrixInv = "InvWindSpaceMatrix",
@@ -100,7 +124,9 @@ public class WindManager : MonoBehaviour
         Vortex_BufferId = "VortexMotorBuffer",
         Vortex_NumId = "VortexMotorBufferCount",
         Moving_BufferId = "MovingMotorBuffer",
-        Moving_NumId = "MovingMotorBufferCount";
+        Moving_NumId = "MovingMotorBufferCount",
+        Obstacle_BufferId = "VertexBuffer",
+        Obstacle_NumId = "VertexBufferCount";
 
     private string
         Result_Ping = "Result_Ping",
@@ -125,6 +151,8 @@ public class WindManager : MonoBehaviour
         kernelHandle_Project_2 = wComputeShader_Project.FindKernel(kernel_Project_2);
         kernelHandle_Project_3 = wComputeShader_Project.FindKernel(kernel_Project_3);
         kernelHandle_Test = wComputeShader_WindMotor.FindKernel(kernel_Test);
+        kernelHandle_SDF_Create = wComputeShader_Obstacle_SDF.FindKernel(kernel_SDF_Create);
+        
 
         InitialField();
         InitialComputeShader();
@@ -138,6 +166,7 @@ public class WindManager : MonoBehaviour
     public void Update()
     {
         UpdateComputeShader();
+        ObstacleDetective();
 
         WindMotorAdd(); //√
         Diffusion(); //√
@@ -146,6 +175,7 @@ public class WindManager : MonoBehaviour
 
         cmd.BeginSample("Test");
         //Test
+        cmd.SetComputeTextureParam(wComputeShader_WindMotor, kernelHandle_Test, kernel_SDF, windField_SDF);
         cmd.SetComputeTextureParam(wComputeShader_WindMotor, kernelHandle_Test, kernel_In, Test3D);
         cmd.SetComputeTextureParam(wComputeShader_WindMotor, kernelHandle_Test, "Test", Test2D);
         cmd.DispatchCompute(wComputeShader_WindMotor, kernelHandle_Test, WindFieldSizeX / 8, WindFieldSizeZ / 8, WindFieldSizeY / 8);
@@ -160,6 +190,7 @@ public class WindManager : MonoBehaviour
 
         particleTest.SetTexture("_WindTexture", Test3D);
         particleTest.SetVector3("_WindCenterPos", this.transform.position);
+
 
         Graphics.ExecuteCommandBuffer(cmd);
         cmd.Clear();
@@ -189,24 +220,28 @@ public class WindManager : MonoBehaviour
         windField_Result_Pong = new RenderTexture(WindFieldSizeX, WindFieldSizeZ, 0);
         windField_Div_Pressure_Ping = new RenderTexture(WindFieldSizeX, WindFieldSizeZ, 0);
         windField_Div_Pressure_Pong = new RenderTexture(WindFieldSizeX,WindFieldSizeZ, 0);
+        windField_SDF = new RenderTexture(WindFieldSizeX, WindFieldSizeZ, 0);
         Test3D = new RenderTexture(WindFieldSizeX, WindFieldSizeZ, 0);
 
         windField_Result_Ping.name = "Result_Ping";
         windField_Result_Pong.name = "Result_Pong";
         windField_Div_Pressure_Ping.name = "Div_Pressure_Ping";
         windField_Div_Pressure_Pong.name = "Div_Pressure_Pong";
+        windField_SDF.name = "SDF";
         Test3D.name = "FinalResult";
 
         windField_Result_Ping.dimension = TextureDimension.Tex3D;
         windField_Result_Pong.dimension = TextureDimension.Tex3D;
         windField_Div_Pressure_Ping.dimension = TextureDimension.Tex3D;
         windField_Div_Pressure_Pong.dimension = TextureDimension.Tex3D;
+        windField_SDF.dimension = TextureDimension.Tex3D;
         Test3D.dimension = TextureDimension.Tex3D;
 
         windField_Result_Ping.format = RenderTextureFormat.ARGBHalf;
         windField_Result_Pong.format = RenderTextureFormat.ARGBHalf;
         windField_Div_Pressure_Ping.format = RenderTextureFormat.ARGBHalf;
         windField_Div_Pressure_Pong.format = RenderTextureFormat.ARGBHalf;
+        windField_SDF.format = RenderTextureFormat.ARGBHalf;
         Test3D.format = RenderTextureFormat.ARGBHalf;
 
         windField_Result_Ping.volumeDepth = WindFieldSizeY;
@@ -214,12 +249,14 @@ public class WindManager : MonoBehaviour
         windField_Div_Pressure_Ping.volumeDepth = WindFieldSizeY;
         windField_Div_Pressure_Pong.volumeDepth = WindFieldSizeY;
         windField_Div_Pressure_Pong.volumeDepth = WindFieldSizeY;
+        windField_SDF.volumeDepth = WindFieldSizeY;
         Test3D.volumeDepth = WindFieldSizeY;
 
         windField_Result_Ping.enableRandomWrite = true;
         windField_Result_Pong.enableRandomWrite = true;
         windField_Div_Pressure_Ping.enableRandomWrite = true;
         windField_Div_Pressure_Pong.enableRandomWrite = true;
+        windField_SDF.enableRandomWrite = true;
         Test3D.enableRandomWrite = true;
 
         Test3D.filterMode = FilterMode.Bilinear;
@@ -228,6 +265,7 @@ public class WindManager : MonoBehaviour
         windField_Div_Pressure_Pong.Create();
         windField_Result_Pong.Create();
         windField_Result_Ping.Create();
+        windField_SDF.Create();
         Test3D.Create();
         
     }
@@ -245,6 +283,7 @@ public class WindManager : MonoBehaviour
         omniMotorBuffer = new ComputeBuffer(MAXMOTOR, 20);
         vortexMotorBuffer = new ComputeBuffer(MAXMOTOR, 32);
         movingMotorBuffer = new ComputeBuffer(MAXMOTOR, 36);
+        obstacleSDFBuffer = new ComputeBuffer(MAXVERTEX, 28);
     }
 
     void UpdateComputeShader()
@@ -291,6 +330,7 @@ public class WindManager : MonoBehaviour
     {
         //更新风力位置
         UpdateWindMotor();
+
 
         wComputeShader_WindMotor.SetVector("WindFieldSize", new Vector3(WindFieldSizeX, WindFieldSizeY, WindFieldSizeZ));
         cmd.BeginSample("Force");
@@ -403,6 +443,53 @@ public class WindManager : MonoBehaviour
         cmd.EndSample("Project");
     }
 
+    void ObstacleDetective()
+    {
+        //这里可以创一个Clear也可以声明新的
+        obstacleMeshList.Clear();
+        int num = 0;
+        //windObstacleCount
+        for (int i = 0; i < goTests.Count; i++)
+        {
+            // Mesh obstacle = windObstacles[i].mesh;
+            Mesh obstacle = goTests[i].GetComponent<MeshFilter>().sharedMesh;
+            Matrix4x4 localToWorld = goTests[i].transform.localToWorldMatrix;
+            for (int j = 0; j < obstacle.vertexCount; j++)
+            {
+                Vertex meshData = new Vertex();
+                //转世界坐标
+                Vector3 worldPos = localToWorld.MultiplyPoint3x4(obstacle.vertices[j]);
+                meshData.position = worldPos + new Vector3(-0.5f, -0.5f, -0.5f); //好像transform的顶点位置有点偏移？
+                meshData.normal = obstacle.normals[j];
+                meshData.ObIndex = i;
+                obstacleMeshList.Add(meshData);
+                num++;
+            }
+        }
+
+    
+       
+        obstacleSDFBuffer.SetData(obstacleMeshList.ToArray());
+        wComputeShader_Obstacle_SDF.SetFloat("VoxelSize", VoxelSize);
+        wComputeShader_Obstacle_SDF.SetVector("WindFieldSize", new Vector3(WindFieldSizeX, WindFieldSizeY, WindFieldSizeZ));
+        wComputeShader_Obstacle_SDF.SetVector("WindFieldCenter", this.transform.position);
+        wComputeShader_Obstacle_SDF.SetBuffer(kernelHandle_SDF_Create, Obstacle_BufferId,obstacleSDFBuffer);
+        wComputeShader_Obstacle_SDF.SetInt(Obstacle_NumId, num);
+
+
+        cmd.BeginSample("SDF_Create");
+        cmd.SetComputeTextureParam(wComputeShader_Obstacle_SDF, kernelHandle_SDF_Create, kernel_Out, windField_SDF);
+        cmd.DispatchCompute(wComputeShader_Obstacle_SDF, kernelHandle_SDF_Create, WindFieldSizeX / 8, WindFieldSizeZ / 8, WindFieldSizeY / 8);
+
+        /*for (int i = 1; StepSize / i != 1; i++)
+        {
+            int Step = StepSize / i;
+            wComputeShader_Obstacle_SDF.SetInt("StepSize", Step);
+            cmd.SetComputeTextureParam(wComputeShader_Obstacle_SDF,kernelHandle_SDF_Iterate,kernel_Out, windField_SDF);
+            cmd.DispatchCompute(wComputeShader_Obstacle_SDF, kernelHandle_SDF_Iterate, WindFieldSizeX / 8, WindFieldSizeZ / 8, WindFieldSizeY / 8);
+        }*/
+        cmd.EndSample("SDF_Create");
+    }
     public void AddWindMotor(WindMotor motor)
     {
         windMotors.Add(motor);
@@ -510,6 +597,25 @@ public class WindManager : MonoBehaviour
         wComputeShader_WindMotor.SetInt(Omni_NumId, omniMotor_num);
         wComputeShader_WindMotor.SetInt(Vortex_NumId, vortexMotor_num);
         wComputeShader_WindMotor.SetInt(Moving_NumId, movingMotor_num);
+    }
+
+    private void OnTriggerStay(Collider other)
+    {
+        GameObject ob = other.gameObject;
+        MeshFilter meshFilter = ob.GetComponent<MeshFilter>();
+        if (windObstacles.Contains(meshFilter) == false && ob.tag == "Obstacle")
+        {
+            windObstacles.Add(meshFilter);
+        }
+    }
+    private void OnTriggerExit(Collider other)
+    {
+        GameObject ob = other.gameObject;
+        MeshFilter meshFilter = ob.GetComponent<MeshFilter>();
+        if (windObstacles.Contains(meshFilter) == true)
+        {
+            windObstacles.Add(meshFilter);
+        }
     }
 }
 

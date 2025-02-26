@@ -1,0 +1,120 @@
+﻿#pragma kernel SDF_Create
+
+#pragma enable_d3d11_debug_symbols
+
+float VoxelSize;
+float3 WindFieldSize;
+float3 WindFieldCenter;
+int VertexBufferCount;
+
+struct Vertex
+{
+    float3 position;
+    float3 normal;
+    int ObIndex;
+};
+
+//遍历的步长
+//int StepSize;
+
+StructuredBuffer<Vertex> VertexBuffer;
+RWTexture3D<float4> OutputResult;
+
+
+bool WindFirldJudge(float3 pos)
+{
+    return true;
+}
+//生成障碍物的纹理 只生成障碍物
+[numthreads(8,8,8)]
+void SDF_Create (uint3 id : SV_DispatchThreadID)
+{
+   //转到世界下
+    float3 currentPos = (id.xzy - WindFieldSize / 2.0f) * VoxelSize + WindFieldCenter;
+    
+    float minLength = 65536;
+    float3 closestPos = float3(0, 0, 0);
+    float3 closestNor = float3(0, 0, 0);
+    bool isOutside = false;
+    bool alreadyInside = false;
+    int Index = 0;
+    
+    for (int i = 0; i < VertexBufferCount; i++)
+    {
+        Vertex vert = VertexBuffer[i];
+
+        if (Index != vert.ObIndex)
+        {
+            if (isOutside == false)
+            {
+                alreadyInside = true;
+            }
+            isOutside = false;
+            Index = vert.ObIndex;
+        }
+        
+        float nowdistance = distance(vert.position, currentPos);
+        float3 dir =currentPos -  vert.position;
+        
+        //使用法线判断是否在内部
+        if (dot(vert.normal, dir) > 0)
+        {
+            isOutside = true;
+        }
+        
+        if(nowdistance < minLength)
+        {
+            minLength = nowdistance;
+            closestPos = vert.position;           
+        }     
+    }
+    
+    if (isOutside == false)
+    {
+        alreadyInside = true;
+    }
+   
+    if (!alreadyInside)
+    {
+        OutputResult[id] = float4(minLength / 256, 0, 0, minLength);
+    }
+    else
+    {
+        OutputResult[id] = float4(-minLength / 256, 0, 0, -minLength);
+    }
+}
+
+//效果不太好 追求精准的情况下就舍弃了 JFA的生成方法 (而且需要配合Initialize使用 这里把 Initia)
+/*[numthreads(8,8,8)]
+void JFAIterate(uint3 id : SV_DispatchThreadID)
+{
+    //当前坐标
+    int3 currentPos = id.xyz;
+    float3 closest = OutputResult[currentPos].xyz;
+
+    //检查邻居体素
+    for (int dx = -1; dx <= 1; dx++)
+    {
+        for (int dy = -1; dy <= 1; dy++)
+        {
+            for (int dz = -1; dz <= 1; dz++)
+            {
+                int3 neighborPos = currentPos + int3(dx, dy, dz) * StepSize;
+                float3 neighborClosest = OutputResult[neighborPos].xyz;
+                
+                //如果邻居更近 替换
+                if (neighborPos.x < WindFieldSize.x && neighborPos.y < WindFieldSize.z && neighborPos.z < WindFieldSize.y && neighborPos.x >= 0 && neighborPos.y >= 0 && neighborPos.z >= 0)
+                {
+                    if (distance(neighborClosest, currentPos) < distance(closest, currentPos))
+                    {
+                        closest = neighborClosest;
+                    }
+                }
+            }
+        }
+    }
+
+    
+    OutputResult[currentPos] = float4(closest, 1.0);
+}
+*/

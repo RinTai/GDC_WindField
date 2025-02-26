@@ -18,6 +18,9 @@ half4x4 InvWindSpaceMatrix;//逆
 float3 WindFieldCenter;
 float3 WindFieldSize;
 
+Texture3D<float4> Obstacle_SDF; //场景中的障碍物体 xyz 是法线 w是距离
+float InfuenceRadius; //障碍物的边界层大小
+
 RWTexture3D<half3> InputResult;
 RWTexture3D<half3> OutputResult;
 RWTexture2D<half4> Test;  //测试用纹理
@@ -41,22 +44,79 @@ half3 WindForceCompute(half4 sourcePos, half4 objPos,half4 windDir, half coffe,h
     //风场的强度还会和风的方向有关在风场方向的
     return    x * MoveVelocity ; //\cross(Dis,windDir.xyz)
 }
-
-void BoundDetection(uint3 id,float dt)
+float3 CalculateSDFGradient(uint3 id,float dt,float voxelSize)
 {
+    half U, V, W;
+    half h = voxelSize;
+    
+     //索引
+    uint3 Self = uint3(id.x, id.y, id.z);
+    uint3 Front = uint3(id.x + 1, id.y, id.z);
+    uint3 Back = uint3(id.x - 1, id.y, id.z);
+    uint3 Up = uint3(id.x, id.y + 1, id.z);
+    uint3 Down = uint3(id.x, id.y - 1, id.z);
+    uint3 Left = uint3(id.x, id.y, id.z + 1);
+    uint3 Right = uint3(id.x, id.y, id.z - 1);
+    
+    half G_Self = Obstacle_SDF[Self].w;
+    half G_Front = id.x + 1 <= WindFieldSize.x - 1 ? Obstacle_SDF[Front].w : 0;
+    half G_Back = id.x - 1 >= 0 ? Obstacle_SDF[Back].w : 0;
+    half G_Up = id.y + 1 <= WindFieldSize.z - 1 ? Obstacle_SDF[Up].w : 0;
+    half G_Down = id.y - 1 >= 0 ? Obstacle_SDF[Down].w : 0;
+    half G_Left = id.z + 1 <= WindFieldSize.y - 1 ? Obstacle_SDF[Left].w : 0;
+    half G_Right = id.z - 1 >= 0 ? Obstacle_SDF[Right].w : 0;
+    
+    //注意 要查看的话 这里是xzy
+    float3 SDFGradient = (float3((G_Front - G_Back) / 2.0f, (G_Up - G_Down) / 2.0f, (G_Left - G_Right) / 2.0f));
+
+    return SDFGradient.xzy;
+}
+
+float CalculateBoundaryThickness(uint3 id,float dt,float voxelSize,float distance)
+{
+    
+    float minDis = distance;
     float3 velocity = InputResult[id];
-    if(id.x  + 1>= WindFieldSize.x || id.x - 1 < 0)
-    {
-        InputResult[id] = (1 + velocity.x * 0.3) * float3(0, velocity.yz);
-    }
-    if (id.y + 1 >= WindFieldSize.z || id.y - 1 < 0)
-    {
-        InputResult[id] = (1 + velocity.y * 0.3) * float3(velocity.x, 0, velocity.z);
-    }
-    if (id.z + 1 >= WindFieldSize.y || id.z - 1 < 0)
-    {
-        InputResult[id] = (1 + velocity.z * 0.3) * float3(velocity.xy, 0);
-    }
+    float U = 1.0f; //自由流速度 
+    float nu = 1.5e-5;//运动粘度
+    float p = 0.5f;
+    
+    float thickness = 5.0 * sqrt((minDis * nu) / (p * U));
+    
+    return thickness;
+}
+
+float CalculateAttenuation(uint3 id, float dt,float voxelSize,float distance,float thickness)
+{
+    
+    return exp(- sqrt(distance / thickness));
+}
+
+void BoundDetection(uint3 id,float dt,float voxelSize)
+{
+   
+    //获取当前风速
+    float3 velocity = InputResult[id];
+    
+    //获取SDF与梯度值
+    float3 gradient = CalculateSDFGradient(id, dt, voxelSize);
+    float4 SDF_Sample = Obstacle_SDF[id];
+    
+    //计算边界层
+    float thickness = CalculateBoundaryThickness(id, dt, voxelSize, abs(SDF_Sample.w));
+    
+    //计算衰减 调整风速
+    float fd = CalculateAttenuation(id, dt, voxelSize, abs(SDF_Sample.w), 0.5);
+    float3 v = fd * velocity;
+    
+    //这个是Deep给的公式 这对吗？
+    float3 newVelocity = velocity - dot(v, gradient) * gradient;
+    
+    if(SDF_Sample.w <= 0)
+        newVelocity = float3(0, 0, 0);
+
+        InputResult[id] = newVelocity;
+
 }
 
 
@@ -66,7 +126,7 @@ void CSAddForce(uint3 id : SV_DispatchThreadID, uint3 Tid : SV_GroupThreadID)
 {
     half4x4 test = InvWindSpaceMatrix;
     //float3 wCellPos = mul(test, half4(id.xzy * VoxelSize, 1.0f)).xyz;
-    float3 wCellPos = (id.xzy - float3(128, 8, 128)) * VoxelSize + WindFieldCenter;
+    float3 wCellPos = (id.xzy - WindFieldSize / 2.0f) * VoxelSize + WindFieldCenter;
     float3 velocityWS = 0.0f;
     if(DirectionalMotorBufferCount > 0)
     {
@@ -103,15 +163,9 @@ void CSAddForce(uint3 id : SV_DispatchThreadID, uint3 Tid : SV_GroupThreadID)
 }
 [numthreads(8, 8, 8)]
 void CSFinal(uint3 id : SV_DispatchThreadID)
-{
-    half4 wEmittorPos = EmittorPos;
-    half4 wCellPos = mul(InvWindSpaceMatrix, half4(id.xyz * VoxelSize, 1.0f));
-    //参数一 Debug (1.15 力的赋值似乎有问题，不能单纯按照距离来赋值，毕竟风场的力也不算很大)
-    half3 AddForce = WindForceCompute(wEmittorPos, wCellPos, EmittorDir, 5.0f, deltaTime);
-    //我感觉需要做一个收敛，似乎不是质量守恒的
-    
+{   
     //一个简单的碰撞边缘的尝试
-    //BoundDetection(id, deltaTime);
+    BoundDetection(id, deltaTime,VoxelSize);
     // 2.11 把这里改成xy轴看看为什么球到了上面就会往上飞
     if (id.z == 8)
     {

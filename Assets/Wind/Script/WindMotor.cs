@@ -11,6 +11,7 @@ public enum MotorType
     Omni,
     Vortex,
     Moving,
+    Mesh,
 }
 
 public struct MotorDirectional

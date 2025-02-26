@@ -14,12 +14,12 @@ Shader "Custom/GrassTest"
     SubShader
     {
         Tags { "RenderType"="Opaque" }
-        LOD 20
-        
+        LOD 200
+        Cull Off
         
         Pass
         {            
-        Cull Off
+    
         HLSLPROGRAM
         #pragma vertex vert 
         #pragma fragment frag
@@ -44,35 +44,38 @@ Shader "Custom/GrassTest"
         {
             float4 vertex : POSITION;
             float3 texcoord : TEXCOORD0;
-            float3 normal : NORMAL;
+            float4 normal : NORMAL;
         };
 
         struct v2f
         {
             float4 Pos : SV_POSITION;
             float3 texcoord : TEXCOORD0;
-            float3 normal : NORMAL;
+            float4 normal : NORMAL;
         };
 
         v2f vert(appdata input)
         {
             v2f output;
             float4 wPos = mul(unity_ObjectToWorld,input.vertex)  ;
+            float4 sourcePos = mul(unity_ObjectToWorld,float4(0,0,0,1));
             float4 id = ((wPos + float4(128,0,128,0)) - float4(WindFieldCenter,0.0f)) ;
             id = float4(float(id.x) / 256.0f,float(id.z) / 256.0f ,float(id.y) / 16.0f,0.0);
             float3 velocityOffset = float3(0,0,0);
             float4 mPos = wPos ;
             velocityOffset =   tex3Dlod(_WindField,float4(id.xyz ,0)) + 0.00001f;
+            output.normal = mul(unity_ObjectToWorld,input.normal);
          
-            if(wPos.y > 1.0)
+            if(wPos.y > 0.2f)
                 {
-                    mPos = wPos + (float4(clamp(_ForceStrength *velocityOffset.x,-1,1),0,clamp(_ForceStrength *velocityOffset.z,-1,1),0)) ;
+                    mPos = wPos +  ((float4(clamp(_ForceStrength *velocityOffset.x,-0.3,0.3),0,clamp(_ForceStrength *velocityOffset.z,-0.3,0.3),0)));
                 }
                
+                //normalize(float4(input.normal,0) + normalize((float4(clamp(_ForceStrength *velocityOffset.x,-0.3,0.3),0,clamp(_ForceStrength *velocityOffset.z,-0.3,0.3),0)))
                 output.Pos = mul(UNITY_MATRIX_VP,mPos);
             //output.Pos = UnityObjectToClipPos(mPos);
             
-            output.normal = mul(unity_ObjectToWorld,input.normal);
+
             output.texcoord = tex3Dlod(_WindField,float4(id.xyz,0));
 
             return output;
@@ -80,7 +83,7 @@ Shader "Custom/GrassTest"
 
             float4 frag(v2f input) : SV_TARGET
             {
-                float diffuse = (dot(input.normal,float3(-1,-1,0)) + 1) / 2;
+                float diffuse = (dot(input.normal,float3(0,-1,0)) + 1) / 2;
                 return float4(0,diffuse,0,1);
             }
 
