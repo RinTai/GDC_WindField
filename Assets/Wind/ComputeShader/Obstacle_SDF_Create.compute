@@ -14,15 +14,41 @@ struct Vertex
     int ObIndex;
 };
 
+struct OBB
+{
+    float4x4 rotation;
+    float3 center;
+    float3 halfExtents;
+};
 //遍历的步长
 //int StepSize;
 
-StructuredBuffer<Vertex> VertexBuffer;
+StructuredBuffer<Vertex> Obstacle_Vetex_Buffer;
+StructuredBuffer<OBB> Obstacle_OBB_Buffer;
 RWTexture3D<float4> OutputResult;
 
 
-bool WindFirldJudge(float3 pos)
+bool BounceCompute(OBB obb, float3 position)
 {
+    float4x4 transposeRotation = (obb.rotation);
+    
+    float3 pLocal = mul(transposeRotation, (position - obb.center));
+    
+    float3 halfExtents = obb.halfExtents;
+    
+    if (pLocal.x < -halfExtents.x || pLocal.x > halfExtents.x)
+    {
+        return false;
+    }
+    if (pLocal.y < -halfExtents.y || pLocal.y > halfExtents.y)
+    {
+        return false;
+    }
+    if (pLocal.z < -halfExtents.z || pLocal.z > halfExtents.z)
+    {
+        return false;
+    }
+    
     return true;
 }
 //生成障碍物的纹理 只生成障碍物
@@ -41,7 +67,7 @@ void SDF_Create (uint3 id : SV_DispatchThreadID)
     
     for (int i = 0; i < VertexBufferCount; i++)
     {
-        Vertex vert = VertexBuffer[i];
+        Vertex vert = Obstacle_Vetex_Buffer[i];
 
         if (Index != vert.ObIndex)
         {
@@ -54,7 +80,7 @@ void SDF_Create (uint3 id : SV_DispatchThreadID)
         }
         
         float nowdistance = distance(vert.position, currentPos);
-        float3 dir =currentPos -  vert.position;
+        float3 dir = currentPos -  vert.position;
         
         //使用法线判断是否在内部
         if (dot(vert.normal, dir) > 0)
@@ -65,22 +91,26 @@ void SDF_Create (uint3 id : SV_DispatchThreadID)
         if(nowdistance < minLength)
         {
             minLength = nowdistance;
-            closestPos = vert.position;           
+            closestPos = vert.position;            
+            closestNor = vert.normal;
         }     
     }
+    //法线出问题了 呃.
+   bool TestBool =  BounceCompute(Obstacle_OBB_Buffer[0], currentPos);
     
-    if (isOutside == false)
+    if (isOutside == false )
     {
         alreadyInside = true;
     }
    
+    closestNor = normalize(closestNor.xyz);
     if (!alreadyInside)
     {
-        OutputResult[id] = float4(minLength / 256, 0, 0, minLength);
+        OutputResult[id] = float4(closestNor, minLength);
     }
     else
     {
-        OutputResult[id] = float4(-minLength / 256, 0, 0, -minLength);
+        OutputResult[id] = float4(closestNor, -minLength);
     }
 }
 

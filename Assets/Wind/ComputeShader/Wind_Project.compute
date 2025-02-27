@@ -17,13 +17,13 @@ half WindProjectCompute_Div(uint3 id, half dt,float voxelSize)
     half h = voxelSize;
     
      //索引
-    uint3 Self = half3(id.x, id.y, id.z);
-    uint3 Front = half3(id.x + 1, id.y, id.z);
-    uint3 Back = half3(id.x - 1, id.y, id.z);
-    uint3 Up = half3(id.x, id.y + 1, id.z);
-    uint3 Down = half3(id.x, id.y - 1, id.z);
-    uint3 Left = half3(id.x, id.y, id.z + 1);
-    uint3 Right = half3(id.x, id.y, id.z - 1);
+    uint3 Self = uint3(id.x, id.y, id.z);
+    uint3 Front = uint3(id.x + 1, id.y, id.z);
+    uint3 Back = uint3(id.x - 1, id.y, id.z);
+    uint3 Up = uint3(id.x, id.y + 1, id.z);
+    uint3 Down = uint3(id.x, id.y - 1, id.z);
+    uint3 Left = uint3(id.x, id.y, id.z + 1);
+    uint3 Right = uint3(id.x, id.y, id.z - 1);
     
     half3 D_Self = InputResult[Self];
     half3 D_Front = id.x + 1 <= WindFieldSize.x - 1 ? InputResult[Front] : 0;
@@ -48,13 +48,13 @@ half WindProjectCompute_Pres(uint3 id, half dt, float voxelSize)
     half h = voxelSize;
     
      //索引
-    uint3 Self = half3(id.x, id.y, id.z);
-    uint3 Front = half3(id.x + 1, id.y, id.z);
-    uint3 Back = half3(id.x - 1, id.y, id.z);
-    uint3 Up = half3(id.x, id.y + 1, id.z);
-    uint3 Down = half3(id.x, id.y - 1, id.z);
-    uint3 Left = half3(id.x, id.y, id.z + 1);
-    uint3 Right = half3(id.x, id.y, id.z - 1);
+    uint3 Self = uint3(id.x, id.y, id.z);
+    uint3 Front = uint3(id.x + 1, id.y, id.z);
+    uint3 Back = uint3(id.x - 1, id.y, id.z);
+    uint3 Up = uint3(id.x, id.y + 1, id.z);
+    uint3 Down = uint3(id.x, id.y - 1, id.z);
+    uint3 Left = uint3(id.x, id.y, id.z + 1);
+    uint3 Right = uint3(id.x, id.y, id.z - 1);
     /*
     half D_Self = Div_Pressure_Input[Self].y;
     half D_Front = id.x + 1 < 256 ? Div_Pressure_Input[Front].y : -D_Self;
