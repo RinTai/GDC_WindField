@@ -29,9 +29,9 @@ Texture3D Obstacle_SDF;
 }*/
 void CustomHLSL(inout VFXAttributes attributes, in float3 worldPos,in float4 SDFvalue,in float Friction)
 {
-    if(SDFvalue.w <= 0.5f)
+    if(SDFvalue.w < 0.5f)
     {
-        attributes.position = attributes.position + (0.5f + abs(SDFvalue.w)) * SDFvalue.xyz;
+        attributes.position = attributes.position + (0.5f +  abs(SDFvalue.w)) * SDFvalue.xyz;
         float3 v_Projected = dot(attributes.velocity, SDFvalue.xyz) * SDFvalue.xyz;
         attributes.velocity = attributes.velocity - (1 + Friction) * v_Projected;
     }

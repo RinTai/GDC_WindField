@@ -27,7 +27,7 @@ half3 WindDiffusionCompute_PingPong(half diff, uint3 id, half dt)
     
     half3 V_Self = InputResult[Self];
     half3 Sum = 0;
-    if((int)id.x +1 < WindFieldSize.x)
+    if((int)id.x +1 <= WindFieldSize.x)
     {
         num++;
         Sum = Sum + InputResult[Front];
@@ -37,7 +37,7 @@ half3 WindDiffusionCompute_PingPong(half diff, uint3 id, half dt)
         num++;
         Sum = Sum + InputResult[Back];
     }
-    if ((int) id.y + 1 < WindFieldSize.z)
+    if ((int) id.y + 1 <= WindFieldSize.z)
     {
         num++;
         Sum = Sum + InputResult[Up];
@@ -47,7 +47,7 @@ half3 WindDiffusionCompute_PingPong(half diff, uint3 id, half dt)
         num++;
         Sum = Sum + InputResult[Down];
     }
-    if ((int) id.z + 1 < WindFieldSize.y)
+    if ((int) id.z + 1 <= WindFieldSize.y)
     {
         num++;
         Sum = Sum + InputResult[Left];

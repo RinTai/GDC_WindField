@@ -56,7 +56,7 @@ bool BounceCompute(OBB obb, float3 position)
 void SDF_Create (uint3 id : SV_DispatchThreadID)
 {
    //转到世界下
-    float3 currentPos = (id.xzy - WindFieldSize / 2.0f) * VoxelSize + WindFieldCenter;
+    float3 currentPos = (id.xzy - (WindFieldSize - 1) / 2.0f) * VoxelSize + WindFieldCenter;
     
     float minLength = 65536;
     float3 closestPos = float3(0, 0, 0);
@@ -74,14 +74,14 @@ void SDF_Create (uint3 id : SV_DispatchThreadID)
             if (isOutside == false)
             {
                 alreadyInside = true;
+                minLength = -abs(minLength);
             }
             isOutside = false;
-            Index = vert.ObIndex;
+            Index = vert.ObIndex;        
         }
         
-        float nowdistance = distance(vert.position, currentPos);
-        float3 dir = currentPos -  vert.position;
-        
+        float nowdistance = distance(vert.position + vert.normal, currentPos);
+        float3 dir = currentPos - vert.position;
         //使用法线判断是否在内部
         if (dot(vert.normal, dir) > 0)
         {
@@ -95,7 +95,7 @@ void SDF_Create (uint3 id : SV_DispatchThreadID)
             closestNor = vert.normal;
         }     
     }
-    //法线出问题了 呃.
+    //法线出问题了 呃. 解决了
    bool TestBool =  BounceCompute(Obstacle_OBB_Buffer[0], currentPos);
     
     if (isOutside == false )
@@ -110,7 +110,7 @@ void SDF_Create (uint3 id : SV_DispatchThreadID)
     }
     else
     {
-        OutputResult[id] = float4(closestNor, -minLength);
+        OutputResult[id] = float4(closestNor, -abs(minLength));
     }
 }
 

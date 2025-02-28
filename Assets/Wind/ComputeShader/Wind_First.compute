@@ -59,11 +59,11 @@ float3 CalculateSDFGradient(uint3 id,float dt,float voxelSize)
     uint3 Right = uint3(id.x, id.y, id.z - 1);
     
     half G_Self = Obstacle_SDF[Self].w;
-    half G_Front = id.x + 1 <= WindFieldSize.x - 1 ? Obstacle_SDF[Front].w : 0;
+    half G_Front = id.x + 1 <= WindFieldSize.x  ? Obstacle_SDF[Front].w : 0;
     half G_Back = id.x - 1 >= 0 ? Obstacle_SDF[Back].w : 0;
-    half G_Up = id.y + 1 <= WindFieldSize.z - 1 ? Obstacle_SDF[Up].w : 0;
+    half G_Up = id.y + 1 <= WindFieldSize.z  ? Obstacle_SDF[Up].w : 0;
     half G_Down = id.y - 1 >= 0 ? Obstacle_SDF[Down].w : 0;
-    half G_Left = id.z + 1 <= WindFieldSize.y - 1 ? Obstacle_SDF[Left].w : 0;
+    half G_Left = id.z + 1 <= WindFieldSize.y  ? Obstacle_SDF[Left].w : 0;
     half G_Right = id.z - 1 >= 0 ? Obstacle_SDF[Right].w : 0;
     
     //注意 要查看的话 这里是xzy
@@ -126,7 +126,7 @@ void CSAddForce(uint3 id : SV_DispatchThreadID, uint3 Tid : SV_GroupThreadID)
 {
     half4x4 test = InvWindSpaceMatrix;
     //float3 wCellPos = mul(test, half4(id.xzy * VoxelSize, 1.0f)).xyz;
-    float3 wCellPos = (id.xzy - WindFieldSize / 2.0f) * VoxelSize + WindFieldCenter;
+    float3 wCellPos = (id.xzy - (WindFieldSize - 1) / 2.0f) * VoxelSize + WindFieldCenter;
     float3 velocityWS = 0.0f;
     if(DirectionalMotorBufferCount > 0)
     {

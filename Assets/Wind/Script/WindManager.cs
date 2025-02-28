@@ -345,7 +345,7 @@ public class WindManager : MonoBehaviour
         UpdateWindMotor();
 
 
-        wComputeShader_WindMotor.SetVector("WindFieldSize", new Vector3(WindFieldSizeX, WindFieldSizeY, WindFieldSizeZ));
+        wComputeShader_WindMotor.SetVector("WindFieldSize", new Vector3(WindFieldSizeX - 1, WindFieldSizeY - 1, WindFieldSizeZ - 1));
         cmd.BeginSample("Force");
         wComputeShader_WindMotor.SetFloat("VoxelSize", VoxelSize);
         Vector3 translation = this.transform.position * VoxelSize + new Vector3(WindFieldSizeX * VoxelSize / 2.0f, WindFieldSizeY * VoxelSize / 2.0f, WindFieldSizeZ * VoxelSize / 2.0f);
@@ -372,7 +372,7 @@ public class WindManager : MonoBehaviour
     {
         cmd.BeginSample("Diffusion");
         wComputeShader_Diffusion.SetFloat("VoxelSize", VoxelSize);
-        wComputeShader_Diffusion.SetVector("WindFieldSize", new Vector3(WindFieldSizeX, WindFieldSizeY, WindFieldSizeZ));
+        wComputeShader_Diffusion.SetVector("WindFieldSize", new Vector3(WindFieldSizeX - 1, WindFieldSizeY - 1, WindFieldSizeZ - 1));
         wComputeShader_Diffusion.SetFloat("PopVelocity", PopVelocity);
         wComputeShader_Diffusion.SetFloat(deltaTime, Time.deltaTime);
         //ping
@@ -412,7 +412,7 @@ public class WindManager : MonoBehaviour
     {
         cmd.BeginSample("Advect");
         wComputeShader_Advect.SetFloat("VoxelSize", VoxelSize);
-        wComputeShader_Advect.SetVector("WindFieldSize", new Vector3(WindFieldSizeX, WindFieldSizeY, WindFieldSizeZ));
+        wComputeShader_Advect.SetVector("WindFieldSize", new Vector3(WindFieldSizeX - 1, WindFieldSizeY - 1, WindFieldSizeZ - 1));
         wComputeShader_Advect.SetFloat(deltaTime, Time.deltaTime);
 
         cmd.SetComputeTextureParam(wComputeShader_Advect, kernelHandle_Advect_Negative, kernel_In, windField_Result_Ping);
@@ -428,7 +428,7 @@ public class WindManager : MonoBehaviour
     {
         cmd.BeginSample("Project");
         wComputeShader_Project.SetFloat("VoxelSize", VoxelSize);
-        wComputeShader_Project.SetVector("WindFieldSize", new Vector3(WindFieldSizeX, WindFieldSizeY, WindFieldSizeZ));
+        wComputeShader_Project.SetVector("WindFieldSize", new Vector3(WindFieldSizeX - 1, WindFieldSizeY - 1, WindFieldSizeZ - 1));
         wComputeShader_Project.SetFloat(deltaTime, Time.deltaTime);
         cmd.SetComputeTextureParam(wComputeShader_Project, kernelHandle_Project_1, kernel_In, windField_Result_Pong);
         cmd.SetComputeTextureParam(wComputeShader_Project, kernelHandle_Project_1, Div_Pressure_Output, windField_Div_Pressure_Ping);
@@ -477,7 +477,7 @@ public class WindManager : MonoBehaviour
                 Vertex meshData = new Vertex();
                 //转世界坐标
                 Vector3 worldPos = localToWorld.MultiplyPoint3x4(obstacle.vertices[j]);
-                meshData.Position = worldPos + new Vector3(-0.5f, -0.5f, -0.5f); //好像transform的顶点位置有点偏移？
+                meshData.Position = worldPos ; //好像transform的顶点位置有点偏移？
                 meshData.Normal = localToWorldNormal.MultiplyPoint3x4(obstacle.normals[j]);
                 meshData.ObIndex = i;
                 obstacleMeshList.Add(meshData);
@@ -491,7 +491,7 @@ public class WindManager : MonoBehaviour
         //传给SDF生成的CS 用于生成SDF
         obstacleSDFBuffer.SetData(obstacleMeshList.ToArray());
         wComputeShader_Obstacle_SDF.SetFloat("VoxelSize", VoxelSize);
-        wComputeShader_Obstacle_SDF.SetVector("WindFieldSize", new Vector3(WindFieldSizeX, WindFieldSizeY, WindFieldSizeZ));
+        wComputeShader_Obstacle_SDF.SetVector("WindFieldSize", new Vector3(WindFieldSizeX - 1, WindFieldSizeY - 1, WindFieldSizeZ - 1));
         wComputeShader_Obstacle_SDF.SetVector("WindFieldCenter", this.transform.position);
         wComputeShader_Obstacle_SDF.SetBuffer(kernelHandle_SDF_Create, Obstacle_BufferId, obstacleSDFBuffer);
         wComputeShader_Obstacle_SDF.SetBuffer(kernelHandle_SDF_Create, Obstacle_OBB_BufferId, obstacleOBBBuffer);
@@ -666,7 +666,7 @@ public class WindManager : MonoBehaviour
             halfExtents.z = Mathf.Max(halfExtents.z, Mathf.Abs(localPos.z));
         }
 
-        obb.Center = center - new Vector3(0.5f,0.5f,0.5f);
+        obb.Center = center;
         obb.HalfExtents = halfExtents;
         obb.Rotation = rotation.inverse;
 
