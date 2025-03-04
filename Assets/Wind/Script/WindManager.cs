@@ -1,15 +1,13 @@
-﻿using System.Collections;
+﻿
 using System.Collections.Generic;
-using System.Threading;
 using NUnit.Framework.Constraints;
-using Unity.Profiling;
-using Unity.VisualScripting;
 using UnityEngine;
-using UnityEngine.Profiling;
 using UnityEngine.Rendering;
-using UnityEngine.UIElements;
 using UnityEngine.VFX;
-using static UnityEditor.Searcher.SearcherWindow.Alignment;
+using MatrixEigen;
+using Unity.Mathematics;
+
+
 
 
 //这一套是没加入RenderFeature的WindField 
@@ -33,6 +31,7 @@ public class WindManager : MonoBehaviour
     private int WindFieldSizeZ = 256;
     private static int MAXMOTOR = 10;
     private static int MAXVERTEX = 65536;
+    private static int MAXOBSTACLE = 16;
     private static float VoxelSize = 1f;
     private static float PopVelocity = 2f;
     private static WindManager m_Instance;
@@ -91,8 +90,10 @@ public class WindManager : MonoBehaviour
     private List<GameObject> windObstacles = new List<GameObject>(16);
     private List<Vertex> obstacleMeshList = new List<Vertex>();
     private List<OBB> obstacleOBBList = new List<OBB>();
+    private List<Vector3> obstacle_OBB_PositionList = new List<Vector3>();
+    private List<Vector3> obstacle_OBB_HalfExtentsList = new List<Vector3>();
+    private List<Matrix4x4> obstacle_OBB_RotationList = new List<Matrix4x4>();
     private int windObstacleCount = 0;
-
     private List<WindMotor> windMotors = new List<WindMotor>(MAXMOTOR);
     private List<MotorDirectional> directionalMotorList = new List<MotorDirectional>(MAXMOTOR);
     private int directionalMotor_num = 0;
@@ -107,8 +108,11 @@ public class WindManager : MonoBehaviour
     private ComputeBuffer omniMotorBuffer;
     private ComputeBuffer vortexMotorBuffer;
     private ComputeBuffer movingMotorBuffer;
-    private ComputeBuffer obstacleSDFBuffer;
-    private ComputeBuffer obstacleOBBBuffer;
+    private ComputeBuffer obstacleVertexBuffer;//用于存储顶点的
+    private GraphicsBuffer obstacleOBBBuffer;
+    private GraphicsBuffer obstacle_OBB_RotationBuffer;
+    private GraphicsBuffer obstacle_OBB_PositionBuffer;
+    private GraphicsBuffer obstacle_OBB_HalfExtentsBuffer;
 
     private const string
         kernel_In = "InputResult",
@@ -136,8 +140,11 @@ public class WindManager : MonoBehaviour
         Vortex_NumId = "VortexMotorBufferCount",
         Moving_BufferId = "MovingMotorBuffer",
         Moving_NumId = "MovingMotorBufferCount",
-        Obstacle_BufferId = "Obstacle_Vetex_Buffer",
+        Obstacle_Vertex_BufferId = "Obstacle_Vetex_Buffer",
         Obstacle_OBB_BufferId = "Obstacle_OBB_Buffer",
+        Obstacle_OBB_Position_BufferId = "Obstacle_OBB_Position_Buffer",
+        Obstacle_OBB_Rotation_BufferId = "Obstacle_OBB_Rotation_Buffer",
+        Obstacle_OBB_HalfExtents_BufferId = "Obstacle_OBB_HalfExtents_Buffer",
         Obstacle_NumId = "VertexBufferCount";
 
     private string
@@ -295,8 +302,11 @@ public class WindManager : MonoBehaviour
         omniMotorBuffer = new ComputeBuffer(MAXMOTOR, 20);
         vortexMotorBuffer = new ComputeBuffer(MAXMOTOR, 32);
         movingMotorBuffer = new ComputeBuffer(MAXMOTOR, 36);
-        obstacleSDFBuffer = new ComputeBuffer(MAXVERTEX, 28);
-        obstacleOBBBuffer = new ComputeBuffer(MAXVERTEX, 88);
+        obstacleVertexBuffer = new ComputeBuffer(MAXVERTEX, 28);
+        obstacleOBBBuffer = new GraphicsBuffer(GraphicsBuffer.Target.Structured, MAXOBSTACLE, 88);
+        obstacle_OBB_PositionBuffer = new GraphicsBuffer(GraphicsBuffer.Target.Structured, MAXOBSTACLE, 12);
+        obstacle_OBB_HalfExtentsBuffer = new GraphicsBuffer(GraphicsBuffer.Target.Structured, MAXOBSTACLE, 12);
+        obstacle_OBB_RotationBuffer = new GraphicsBuffer(GraphicsBuffer.Target.Structured, MAXOBSTACLE, 64);
     }
 
     void UpdateComputeShader()
@@ -461,23 +471,30 @@ public class WindManager : MonoBehaviour
         //这里可以创一个Clear也可以声明新的
         obstacleMeshList.Clear();
         obstacleOBBList.Clear();
+        obstacle_OBB_RotationList.Clear();
+        obstacle_OBB_HalfExtentsList.Clear();
+        obstacle_OBB_PositionList.Clear();
         int num = 0;
         //windObstacleCount
-        for (int i = 0; i < goTests.Count ; i++)
+        for (int i = 0; i < goTests.Count; i++)
         {
             // Mesh obstacle = windObstacles[i].mesh;
-            
+
             Mesh obstacle = goTests[i].GetComponent<MeshFilter>().sharedMesh;
             Matrix4x4 localToWorld = goTests[i].transform.localToWorldMatrix;
             Matrix4x4 localToWorldNormal = (localToWorld.inverse).transpose;//法线的特殊旋转矩阵
-           OBB obb = OBBCreate(goTests[i]);
+            OBB obb = OBBCreate_Transform(goTests[i]);
             obstacleOBBList.Add(obb);
+            obstacle_OBB_HalfExtentsList.Add(obb.HalfExtents);
+            obstacle_OBB_RotationList.Add(obb.Rotation);
+            obstacle_OBB_PositionList.Add(obb.Center);
+
             for (int j = 0; j < obstacle.vertexCount; j++)
             {
                 Vertex meshData = new Vertex();
                 //转世界坐标
                 Vector3 worldPos = localToWorld.MultiplyPoint3x4(obstacle.vertices[j]);
-                meshData.Position = worldPos ; //好像transform的顶点位置有点偏移？
+                meshData.Position = worldPos; //好像transform的顶点位置有点偏移？
                 meshData.Normal = localToWorldNormal.MultiplyPoint3x4(obstacle.normals[j]);
                 meshData.ObIndex = i;
                 obstacleMeshList.Add(meshData);
@@ -487,13 +504,21 @@ public class WindManager : MonoBehaviour
 
         //把OBB传给VFX
         obstacleOBBBuffer.SetData(obstacleOBBList.ToArray());
-       
+        //unity DE BUG 
+        obstacle_OBB_RotationBuffer.SetData(obstacle_OBB_RotationList.ToArray());
+        obstacle_OBB_HalfExtentsBuffer.SetData(obstacle_OBB_HalfExtentsList.ToArray());
+        obstacle_OBB_PositionBuffer.SetData(obstacle_OBB_PositionList.ToArray());
+
+        particleTest.SetGraphicsBuffer(Obstacle_OBB_HalfExtents_BufferId, obstacle_OBB_HalfExtentsBuffer);
+        particleTest.SetGraphicsBuffer(Obstacle_OBB_Position_BufferId, obstacle_OBB_PositionBuffer);
+        particleTest.SetGraphicsBuffer(Obstacle_OBB_Rotation_BufferId, obstacle_OBB_RotationBuffer);
+        particleTest.SetInt("OBBCount", goTests.Count);
         //传给SDF生成的CS 用于生成SDF
-        obstacleSDFBuffer.SetData(obstacleMeshList.ToArray());
+        obstacleVertexBuffer.SetData(obstacleMeshList.ToArray());
         wComputeShader_Obstacle_SDF.SetFloat("VoxelSize", VoxelSize);
         wComputeShader_Obstacle_SDF.SetVector("WindFieldSize", new Vector3(WindFieldSizeX - 1, WindFieldSizeY - 1, WindFieldSizeZ - 1));
         wComputeShader_Obstacle_SDF.SetVector("WindFieldCenter", this.transform.position);
-        wComputeShader_Obstacle_SDF.SetBuffer(kernelHandle_SDF_Create, Obstacle_BufferId, obstacleSDFBuffer);
+        wComputeShader_Obstacle_SDF.SetBuffer(kernelHandle_SDF_Create, Obstacle_Vertex_BufferId, obstacleVertexBuffer);
         wComputeShader_Obstacle_SDF.SetBuffer(kernelHandle_SDF_Create, Obstacle_OBB_BufferId, obstacleOBBBuffer);
         wComputeShader_Obstacle_SDF.SetInt(Obstacle_NumId, num);
 
@@ -622,45 +647,100 @@ public class WindManager : MonoBehaviour
         wComputeShader_WindMotor.SetInt(Moving_NumId, movingMotor_num);
     }
 
-    //OBB的创建
-    OBB OBBCreate(GameObject gameObject)
+    /// <summary>
+    /// OBB的创建(使用Transform)
+    /// </summary>
+    /// <param name="gameObject"></param>
+    /// <returns></returns>
+    OBB OBBCreate_Transform(GameObject gameObject)
     {
+        OBB oBB = new OBB();
+
+        oBB.Center = gameObject.transform.position;
+        oBB.Rotation = Matrix4x4.Rotate(gameObject.transform.rotation);
+        oBB.HalfExtents = gameObject.transform.localScale / 2;
+
+        Vector3 center = oBB.Center;
+        Vector3 obbAxisX = Matrix4x4.Rotate(gameObject.transform.rotation).GetColumn(0);
+        Vector3 obbAxisY = Matrix4x4.Rotate(gameObject.transform.rotation).GetColumn(1);
+        Vector3 obbAxisZ = Matrix4x4.Rotate(gameObject.transform.rotation).GetColumn(2);
+
+        Vector3 halfExtents = oBB.HalfExtents;
+
+        Debug.DrawLine(center, center + obbAxisX * halfExtents.x, Color.red);   // X 轴
+        Debug.DrawLine(center, center + obbAxisY * halfExtents.y, Color.green); // Y 轴
+        Debug.DrawLine(center, center + obbAxisZ * halfExtents.z, Color.blue);  // Z 轴
+
+        return oBB;
+    }
+
+    /// <summary>
+    /// OBB的创建(使用顶点)
+    /// </summary>
+    /// <param name="gameObject"></param>
+    /// <returns></returns>
+    OBB OBBCreate_Vertexs(GameObject gameObject)
+    {
+        List<Vector3> vertexs = new List<Vector3>();
         Matrix4x4 localToWorld = gameObject.transform.localToWorldMatrix;
         OBB obb = new OBB();
         Mesh goMesh = gameObject.GetComponent<MeshFilter>().sharedMesh;
 
+        goMesh.GetVertices(vertexs);
         //oBB的中心点
         Vector3 center = Vector3.zero;
         foreach (var v in goMesh.vertices)
         {
-            center += localToWorld.MultiplyPoint3x4(v);
+            center += localToWorld.MultiplyPoint(v);
         }
         center /= goMesh.vertexCount;
 
-        //计算协方差矩阵(顺便归一)
-        Matrix4x4 cov = Matrix4x4.zero;
-        foreach (var v in goMesh.vertices)
-        {
-            Vector3 delta = localToWorld.MultiplyPoint3x4(v) - center;
-            cov.m00 += delta.x * delta.x / goMesh.vertexCount;
-            cov.m01 += delta.x * delta.y / goMesh.vertexCount;
-            cov.m02 += delta.x * delta.z / goMesh.vertexCount;
-            cov.m10 += delta.y * delta.x / goMesh.vertexCount;
-            cov.m11 += delta.y * delta.y / goMesh.vertexCount;
-            cov.m12 += delta.y * delta.z / goMesh.vertexCount;
-            cov.m20 += delta.z * delta.x / goMesh.vertexCount;
-            cov.m21 += delta.z * delta.y / goMesh.vertexCount;
-            cov.m22 += delta.z * delta.z / goMesh.vertexCount;
-        }
+        /* //计算协方差矩阵(顺便归一)
+         Matrix4x4 cov = Matrix4x4.zero;
+         foreach (var v in goMesh.vertices)
+         {
+             Vector3 delta = localToWorld.MultiplyPoint(v) - center;
+             cov.m00 += delta.x * delta.x / goMesh.vertexCount;
+             cov.m01 += delta.x * delta.y / goMesh.vertexCount;
+             cov.m02 += delta.x * delta.z / goMesh.vertexCount;
+             cov.m10 += delta.y * delta.x / goMesh.vertexCount;
+             cov.m11 += delta.y * delta.y / goMesh.vertexCount;
+             cov.m12 += delta.y * delta.z / goMesh.vertexCount;
+             cov.m20 += delta.z * delta.x / goMesh.vertexCount;
+             cov.m21 += delta.z * delta.y / goMesh.vertexCount;
+             cov.m22 += delta.z * delta.z / goMesh.vertexCount;
+         }*/
 
-        //特征值分解
-        Matrix4x4 rotation = ComputeEigenValue(cov);
+        float4x4 cov = CalateCov(gameObject);
+
+        // 计算特征值和特征向量（使用雅可比迭代法）
+        float4x4 eigenvalues;
+        float4x4 eigenvectors;
+        eigenvectors = EigenMatrix.JacobiMatrixs(cov);
+        eigenvalues = EigenMatrix.PT_A_P(cov, eigenvectors);//计算出来的是特征值
+
+        // 确保特征向量是单位向量
+        Vector3 eigenVec1 = eigenvectors.c0.xyz;
+        Vector3 eigenVec2 = eigenvectors.c1.xyz;
+        Vector3 eigenVec3 = eigenvectors.c2.xyz;
+
+        // 构建旋转矩阵
+        Matrix4x4 rotation = Matrix4x4.identity;
+        rotation.SetColumn(0, new Vector4(eigenVec1.x, eigenVec1.y, eigenVec1.z, 0).normalized);
+        rotation.SetColumn(1, new Vector4(eigenVec2.x, eigenVec2.y, eigenVec2.z, 0).normalized);
+        rotation.SetColumn(2, new Vector4(eigenVec3.x, eigenVec3.y, eigenVec3.z, 0).normalized);
+        rotation.SetColumn(3, new Vector4(0, 0, 0, 1));
 
         //计算半轴
         Vector3 halfExtents = Vector3.zero;
         foreach (var v in goMesh.vertices)
         {
-            Vector3 localPos = rotation.inverse.MultiplyPoint3x4(localToWorld.MultiplyPoint3x4(v) - center);
+            Vector3 worldPos = localToWorld.MultiplyPoint(v);
+            Vector3 localPos = new Vector3(
+               Vector3.Dot(worldPos - center, eigenVec1),
+               Vector3.Dot(worldPos - center, eigenVec2),
+               Vector3.Dot(worldPos - center, eigenVec3)
+           );
             halfExtents.x = Mathf.Max(halfExtents.x, Mathf.Abs(localPos.x));
             halfExtents.y = Mathf.Max(halfExtents.y, Mathf.Abs(localPos.y));
             halfExtents.z = Mathf.Max(halfExtents.z, Mathf.Abs(localPos.z));
@@ -670,116 +750,100 @@ public class WindManager : MonoBehaviour
         obb.HalfExtents = halfExtents;
         obb.Rotation = rotation.inverse;
 
+        // OBB 的轴就是特征向量
+        Vector3 obbAxisX = eigenvectors.c0.xyz;
+        Vector3 obbAxisY = eigenvectors.c1.xyz;
+        Vector3 obbAxisZ = eigenvectors.c2.xyz;
+
+        Debug.DrawLine(center, center + obbAxisX * halfExtents.x, Color.red);   // X 轴
+        Debug.DrawLine(center, center + obbAxisY * halfExtents.y, Color.green); // Y 轴
+        Debug.DrawLine(center, center + obbAxisZ * halfExtents.z, Color.blue);  // Z 轴
+
         return obb;
     }
-    //计算特征值 在生成OBB时需要用到的分解
-    public static Matrix4x4 ComputeEigenValue(Matrix4x4 cov)
+
+    /// <summary>
+    /// 求均值
+    /// </summary>
+    /// <param name="x"></param>
+    /// <returns></returns>
+    static float EX(List<float> x)
     {
-        float[,] matrix = new float[3, 3]
-  {
-        { cov.m00, cov.m01, cov.m02 },
-        { cov.m10, cov.m11, cov.m12 },
-        { cov.m20, cov.m21, cov.m22 }
-  };
-        // 计算特征值和特征向量（使用雅可比迭代法）
-        float[] eigenvalues = new float[3];
-        float[,] eigenvectors = new float[3, 3];
-        Jacobi(ref matrix, ref eigenvalues, ref eigenvectors);
+        float a = 0;
+        for (int i = 0; i < x.Count; i++)
+        {
+            a += x[i];
+        }
 
-        Matrix4x4 rotation = Matrix4x4.identity;
-        rotation.SetColumn(0, new Vector4((float)eigenvectors[0, 0], (float)eigenvectors[1, 0], (float)eigenvectors[2, 0], 0));
-        rotation.SetColumn(1, new Vector4((float)eigenvectors[0, 1], (float)eigenvectors[1, 1], (float)eigenvectors[2, 1], 0));
-        rotation.SetColumn(2, new Vector4((float)eigenvectors[0, 2], (float)eigenvectors[1, 2], (float)eigenvectors[2, 2], 0));
+        return a / x.Count;
+    }
+    /// <summary>
+    /// 求X和Y的均值
+    /// </summary>
+    /// <param name="x"></param>
+    /// <param name="y"></param>
+    /// <returns></returns>
+    static float EXY(List<float> x, List<float> y)
+    {
+        int count = Mathf.Min(x.Count, y.Count);
+        float s = 0;
+        for (int i = 0; i < count; i++)
+        {
+            s += x[i] * y[i];
+        }
 
-        return rotation;
+        return s / count;
+    }
+    /// <summary>
+    /// 求协方差
+    /// </summary>
+    /// <param name="x"></param>
+    /// <param name="y"></param>
+    /// <returns></returns>
+    static float COV(List<float> x, List<float> y)
+    {
+        float ex = EX(x);
+        float ey = EX(y);
+        float exy = EXY(x, y);
+        return exy - ex * ey;
     }
 
-    //雅可比的迭代
-    public static void Jacobi(ref float[,] matrix, ref float[] eigenvalues, ref float[,] eigenvectors)
+    /// <summary>
+    /// 求协方差矩阵 协方差矩阵是实对称矩阵 可以用Jacobi计算特征值和特征向量
+    /// </summary>
+    float4x4 CalateCov(GameObject GO)
     {
-        int n = matrix.GetLength(0);
-        eigenvalues = new float[n];
-        eigenvectors = new float[n, n];
-
-        // 初始化特征向量矩阵为单位矩阵
-        for (int i = 0; i < n; i++)
+        float4x4 Cov = new float4x4();      
+        Mesh mesh = GO.GetComponent<MeshFilter>().sharedMesh;
+        Matrix4x4 localToWorld = GO.transform.localToWorldMatrix;
+        
+        List<float> x = new List<float>();
+        List<float> y = new List<float>();
+        List<float> z = new List<float>();
+        foreach (var v in mesh.vertices)
         {
-            eigenvalues[i] = matrix[i, i];
-            for (int j = 0; j < n; j++)
-            {
-                eigenvectors[i, j] = (i == j) ? 1.0f : 0.0f;
-            }
-        }
-        //开始迭代
-        for (int iter = 0; iter < 16; iter++)
-        {
-            // 找到最大的非对角元素
-            int p = 0, q = 1;
-            float maxOffDiagonal = Mathf.Abs(matrix[p, q]);
-            for (int i = 0; i < n; i++)
-            {
-                for (int j = i + 1; j < n; j++)
-                {
-                    if (Mathf.Abs(matrix[i, j]) > maxOffDiagonal)
-                    {
-                        maxOffDiagonal = Mathf.Abs(matrix[i, j]);
-                        p = i;
-                        q = j;
-                    }
-                }
-            }
-            // 检查收敛性
-            if (maxOffDiagonal < 10e-10)
-                break;
-
-            // 计算旋转角度
-            float theta = 0.5f * Mathf.Atan2(2 * matrix[p, q], matrix[q, q] - matrix[p, p]);
-            float cos = Mathf.Cos(theta);
-            float sin = Mathf.Sin(theta);
-
-            // 更新矩阵A和特征向量矩阵
-            for (int i = 0; i < n; i++)
-            {
-                float aip = matrix[i, p];
-                float aiq = matrix[i, q];
-                matrix[i, p] = cos * aip - sin * aiq;
-                matrix[i, q] = sin * aip + cos * aiq;
-                matrix[p, i] = matrix[i, p];
-                matrix[q, i] = matrix[i, q];
-
-                float vip = eigenvectors[i, p];
-                float viq = eigenvectors[i, q];
-                eigenvectors[i, p] = cos * vip - sin * viq;
-                eigenvectors[i, q] = sin * vip + cos * viq;
-            }
-        }
-        //迭代完毕
-
-        // 提取特征值
-        for (int i = 0; i < n; i++)
-        {
-            eigenvalues[i] = matrix[i, i];
+            float3 wv = localToWorld.MultiplyPoint3x4(v);
+            x.Add(wv.x);
+            y.Add(wv.y);
+            z.Add(wv.z);
         }
 
+        float covXX = COV(x, x);
+        float covXY = COV(x, y);
+        float covXZ = COV(x, z);
+
+        float covYY = COV(y, y);
+        float covYZ = COV(z, y);
+        float covZZ = COV(z, z);
+        //协方差矩阵  实对称矩阵  各个特征向量都是垂直的  它必可相似对角化，且相似对角阵上的元素即为矩阵本身特征值
+        Cov.c0 = new float4(covXX, covXY, covXZ, 0);
+        Cov.c1 = new float4(covXY, covYY, covYZ, 0);
+        Cov.c2 = new float4(covXZ, covYZ, covZZ, 0);
+        Cov.c3 = new float4(0, 0, 0, 1);//打酱油
+
+        return Cov;
     }
-    private void OnTriggerStay(Collider other)
-    {
-        GameObject ob = other.gameObject;
-        MeshFilter meshFilter = ob.GetComponent<MeshFilter>();
-        if (windObstacles.Contains(ob) == false && ob.tag == "Obstacle")
-        {
-            windObstacles.Add(ob);
-        }
-    }
-    private void OnTriggerExit(Collider other)
-    {
-        GameObject ob = other.gameObject;
-        MeshFilter meshFilter = ob.GetComponent<MeshFilter>();
-        if (windObstacles.Contains(ob) == true)
-        {
-            windObstacles.Add(ob);
-        }
-    }
+
 
 }
 

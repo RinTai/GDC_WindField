@@ -112,10 +112,12 @@ void BoundDetection(uint3 id,float dt,float voxelSize)
     //这个是Deep给的公式 这对吗？
     float3 newVelocity = velocity - dot(v, gradient) * gradient;
     
+    
     if(SDF_Sample.w <= 0)
         newVelocity = float3(0, 0, 0);
-
-        InputResult[id] = newVelocity;
+    
+    
+    InputResult[id] = newVelocity;
 
 }
 
