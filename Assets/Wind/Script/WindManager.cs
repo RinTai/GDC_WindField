@@ -6,6 +6,7 @@ using UnityEngine.Rendering;
 using UnityEngine.VFX;
 using MatrixEigen;
 using Unity.Mathematics;
+using static UnityEditor.Experimental.AssetDatabaseExperimental.AssetDatabaseCounters;
 
 
 
@@ -55,7 +56,6 @@ public class WindManager : MonoBehaviour
     //扩散的CS内核句柄
     private int kernelHandle_Diffusion;//内核句柄
     //平流的内核句柄
-    private int kernelHandle_Advect_Positive;
     private int kernelHandle_Advect_Negative;
     //流体去散度的CS句柄
     private int kernelHandle_Project_1;
@@ -164,7 +164,6 @@ public class WindManager : MonoBehaviour
 
         kernelHandle_WindMotor = wComputeShader_WindMotor.FindKernel(kernel_AddForce);
         kernelHandle_Diffusion = wComputeShader_Diffusion.FindKernel(kernel_Diffusion_1);
-        kernelHandle_Advect_Positive = wComputeShader_Advect.FindKernel(kernel_Advect_Positive);
         kernelHandle_Advect_Negative = wComputeShader_Advect.FindKernel(kernel_Advect_Negative);
         kernelHandle_Project_1 = wComputeShader_Project.FindKernel(kernel_Project_1);
         kernelHandle_Project_2 = wComputeShader_Project.FindKernel(kernel_Project_2);
@@ -179,7 +178,24 @@ public class WindManager : MonoBehaviour
 
     private void OnEnable()
     {
+    }
 
+    private void OnDrawGizmos()
+    {
+        Gizmos.color = Color.white;
+
+        for (int x = 0; x < WindFieldSizeX / 16; x++)
+        {
+            for (int y = 0; y < WindFieldSizeY / 16 ; y++)
+            {
+                for (int z = 0; z < WindFieldSizeZ / 16 ; z++)
+                {
+                    // 计算每个长方体的中心点
+                    Vector3 cubeCenter = this.transform.position + new Vector3(16 *x, 8, 16 * z) - new Vector3(127, 7 ,127);
+                    Gizmos.DrawWireCube(cubeCenter, new Vector3(16 ,16, 16));
+                }
+            }
+        }
     }
 
     public void Update()

@@ -74,7 +74,6 @@ public class WindRender : ScriptableRendererFeature
 
         private int kernelHandle_WindMotor;
         private int kernelHandle_Diffusion;//内核句柄
-        private int kernelHandle_Advect_Positive;
         private int kernelHandle_Advect_Negative;
         private int kernelHandle_Project_1;
         private int kernelHandle_Project_2;
@@ -279,9 +278,6 @@ public class WindRender : ScriptableRendererFeature
         {
             cmd.BeginSample("Advect");
             wComputeShader_Advect.SetFloat(deltaTime, Time.deltaTime);
-            cmd.SetComputeTextureParam(wComputeShader_Advect, kernelHandle_Advect_Positive, kernel_In, windField_Result_Ping);
-            cmd.SetComputeTextureParam(wComputeShader_Advect, kernelHandle_Advect_Positive, kernel_Out, windField_Result_Pong);
-            cmd.DispatchCompute(wComputeShader_Advect, kernelHandle_Advect_Positive, WindFieldSizeX / 8, WindFieldSizeZ / 8, WindFieldSizeY / 8);
 
 
             cmd.SetComputeTextureParam(wComputeShader_Advect, kernelHandle_Advect_Negative, kernel_In, windField_Result_Ping);
@@ -441,7 +437,6 @@ public class WindRender : ScriptableRendererFeature
 
             kernelHandle_WindMotor = wComputeShader_WindMotor.FindKernel(kernel_AddForce);
             kernelHandle_Diffusion = wComputeShader_Diffusion.FindKernel(kernel_Diffusion_1);
-            kernelHandle_Advect_Positive = wComputeShader_Advect.FindKernel(kernel_Advect_Positive);
             kernelHandle_Advect_Negative = wComputeShader_Advect.FindKernel(kernel_Advect_Negative);
             kernelHandle_Project_1 = wComputeShader_Project.FindKernel(kernel_Project_1);
             kernelHandle_Project_2 = wComputeShader_Project.FindKernel(kernel_Project_2);

@@ -120,10 +120,10 @@ bool BounceCompute(float4x4 rotation, float3 halfExtents, float3 center, float3 
     }
    //把Axia转世界去
     float4x4 InvTransRotation = inverse(transposeRotation);
-    worldNormal = normalize(mul(InvTransRotation, float4(Axia, 1.0)).xyz);
+    worldNormal = mul(rotation, float4(Axia, 1.0)).xyz;
     return true;
 }
-void CustomHLSL(inout VFXAttributes attributes, in float3 worldPos,in float4 SDFvalue, in float Friction, in float3 WindForce, in float deltaTime, in StructuredBuffer<float4x4> Obstacle_OBB_Rotation, in StructuredBuffer<float3> Obstacle_OBB_Position, in StructuredBuffer<float3> Obstacle_OBB_HalfExtents, in int OBBCount)
+void CustomHLSL(inout VFXAttributes attributes,in float ParticleForce, in float3 WorldPos,in float4 SDFvalue, in float Friction, in float3 WindForce, in float deltaTime, in StructuredBuffer<float4x4> Obstacle_OBB_Rotation, in StructuredBuffer<float3> Obstacle_OBB_Position, in StructuredBuffer<float3> Obstacle_OBB_HalfExtents, in int OBBCount)
 {
     bool isBounce = false;
     float3 normal = float3(0, 0, 0);
@@ -133,17 +133,37 @@ void CustomHLSL(inout VFXAttributes attributes, in float3 worldPos,in float4 SDF
         float4x4 rotation = Obstacle_OBB_Rotation[i];
         float3 center = Obstacle_OBB_Position[i];
         float3 halfExtents = Obstacle_OBB_HalfExtents[i];
-        float3 lastWorldPos = worldPos - deltaTime * attributes.velocity;
-        isBounce = isBounce || BounceCompute(rotation, halfExtents, center,velocity , worldPos, lastWorldPos, normal);
+        float3 lastWorldPos = WorldPos - deltaTime * attributes.velocity;
+        isBounce = isBounce || BounceCompute(rotation, halfExtents, center,velocity , WorldPos, lastWorldPos, normal);
     }
     if (isBounce)
     {
-        attributes.position = attributes.position + 0.5 * normal;
-        float3 v_Projected = dot(attributes.velocity, normal) * normal;
-        attributes.velocity = attributes.velocity - (1 + Friction) * v_Projected + WindForce * deltaTime;
-      
-        isBounce = false;
+        attributes.position = attributes.position + 1.0f * normal ;
+        double3 v_Projected = mul(dot(attributes.velocity, normal), normal);
+        attributes.velocity = attributes.velocity - mul((1 + Friction) , v_Projected);
     }
+
+    if(!isBounce)
+    {
+        
+        float velocityDifference = length(attributes.velocity) - length(WindForce);
+        if (velocityDifference >= 10.0f )
+        {
+            float3 windDirection = normalize(WindForce);
+            float speed = length(attributes.velocity);
+            float windSpeed = length(WindForce);
+            float test = lerp(speed, windSpeed, 0.5f);
+            attributes.velocity = windDirection * test;
+
+        }
+        else
+        {
+            attributes.velocity += ParticleForce * WindForce * deltaTime;
+        }
+    }
+        //速度的增加
+ 
+    
     // SDF碰撞
     /*
     if(SDFvalue.w < 0)
@@ -155,7 +175,7 @@ void CustomHLSL(inout VFXAttributes attributes, in float3 worldPos,in float4 SDF
 
     
 
-}
+    }
 
 
 #endif

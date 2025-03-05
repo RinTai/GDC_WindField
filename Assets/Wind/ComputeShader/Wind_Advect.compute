@@ -1,4 +1,4 @@
-﻿#pragma kernel CSAdvect_Positive
+﻿
 #pragma kernel CSAdvect_Negative
 #pragma enable_d3d11_debug_symbols
 
@@ -192,11 +192,7 @@ half3 WindNegativeAdvectCompute(uint3 id, half dt)
     return advect;
 }
 
-[numthreads(8,8,8)]
-void CSAdvect_Positive (uint3 id : SV_DispatchThreadID)
-{
-    WindPositiveAdvectCompute(id, deltaTime); 
-}
+
 [numthreads(8, 8, 8)]
 void CSAdvect_Negative(uint3 id : SV_DispatchThreadID)
 {
