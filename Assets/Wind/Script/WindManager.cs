@@ -33,7 +33,7 @@ public class WindManager : MonoBehaviour
     private static int MAXMOTOR = 10;
     private static int MAXVERTEX = 65536;
     private static int MAXOBSTACLE = 16;
-    private static float VoxelSize = 1f;
+    private static float VoxelSize =1f; // WindField 下面挂载的图片显示的是在256 256 16 的格子下的相对位置 （比如在 世界坐标下1, 0 ,0的点 ， 可能实际在相对位置 128 + 2，8，128 的位置） 不是准确的世界坐标 DebugParticle 同理，但是Test粒子就是准确的坐标点
     private static float PopVelocity = 2f;
     private static WindManager m_Instance;
     public static WindManager Instance
@@ -223,6 +223,7 @@ public class WindManager : MonoBehaviour
         debugParticle.SetTexture("_WindTexture", Test3D);
         debugParticle.SetVector3("_WindCenterPos", this.transform.position);
 
+        particleTest.SetFloat("_VoxelSize",VoxelSize);
         particleTest.SetTexture("_WindTexture", Test3D);
         particleTest.SetVector3("_WindCenterPos", this.transform.position);
 

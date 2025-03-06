@@ -49,6 +49,7 @@ float3 CalculateSDFGradient(uint3 id,float dt,float voxelSize)
     half U, V, W;
     half h = voxelSize;
     
+    
      //索引
     uint3 Self = uint3(id.x, id.y, id.z);
     uint3 Front = uint3(id.x + 1, id.y, id.z);

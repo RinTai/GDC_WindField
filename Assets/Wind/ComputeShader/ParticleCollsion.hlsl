@@ -138,7 +138,7 @@ void CustomHLSL(inout VFXAttributes attributes,in float ParticleForce, in float3
     }
     if (isBounce)
     {
-        attributes.position = attributes.position + 1.0f * normal ;
+        attributes.position = attributes.position +0.7f *  normal;
         double3 v_Projected = mul(dot(attributes.velocity, normal), normal);
         attributes.velocity = attributes.velocity - mul((1 + Friction) , v_Projected);
     }
