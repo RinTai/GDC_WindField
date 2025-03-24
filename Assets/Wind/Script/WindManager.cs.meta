@@ -10,7 +10,7 @@ MonoImporter:
   - wComputeShader_Project: {fileID: 7200000, guid: 2319ad9130aa7014796c93047eb21f13, type: 3}
   - windEmitter: {instanceID: 0}
   - windTexture: {instanceID: 0}
-  executionOrder: 0
+  executionOrder: 300
   icon: {instanceID: 0}
   userData: 
   assetBundleName: 

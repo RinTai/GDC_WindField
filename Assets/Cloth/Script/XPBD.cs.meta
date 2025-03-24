@@ -1,0 +1,15 @@
+fileFormatVersion: 2
+guid: 52751314b633d2d42b93433c4c98e01d
+MonoImporter:
+  externalObjects: {}
+  serializedVersion: 2
+  defaultReferences:
+  - testMesh: {instanceID: 0}
+  - m_ComputeShader: {fileID: 7200000, guid: fd6a1550f056d544cba23ef69c03977a, type: 3}
+  - m_InteractionCS: {fileID: 7200000, guid: 6ee6e7a236e962e4dbd84ade2f401df1, type: 3}
+  - m_CalculateCS: {fileID: 7200000, guid: bc2250421122a424caa12d49d916345b, type: 3}
+  executionOrder: 0
+  icon: {instanceID: 0}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 

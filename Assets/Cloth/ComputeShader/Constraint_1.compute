@@ -1,0 +1,612 @@
+﻿#pragma kernel Constraint
+#pragma kernel Constraint_Size
+#pragma kernel Constraint_Fixed
+#pragma kernel Constraint_Bend
+#pragma kernel Constraint_SelfCollsion
+#pragma enable_d3d11_debug_symbols
+struct Point
+{
+    float Mass;
+    float3 Position;
+    float3 Velocity;
+    float padding;
+};
+
+float deltaTime;
+float alpha;
+int meshVertexNums;
+int simulationTimes;
+int rawCount;
+RWStructuredBuffer<Point> nowPoint; //代表现在的顶点的状态
+RWStructuredBuffer<Point> postPoint; //代表上次的顶点的状态
+RWStructuredBuffer<Point> prePoint;//初始状态
+
+
+//id的转换 转换到StructuredBuffer下 一一对应吧.
+int IdTransform(int3 id)
+{
+    //把一个轴填满了才去下一个轴 Dispatch(totalnum / 256 .totalnum / 1024)
+    return id.x + id.y * 1024 + id.z * 1024 * 1024;
+}
+float3x3 V_cross_I(float3 v)
+{
+    float3x3 v_cross_I;
+    v_cross_I[0] = float3(0, -v.z, v.y); // 第一列
+    v_cross_I[1] = float3(v.z, 0, -v.x); // 第二列
+    v_cross_I[2] = float3(-v.y, v.x, 0); // 第三列
+
+    return v_cross_I;
+}
+float3x3 I_cross_V(float3 v)
+{
+    float3x3 v_cross_I;
+    v_cross_I[0] = float3(0,  v.z, -v.y); // 第一列
+    v_cross_I[1] = float3(-v.z, 0, v.x); // 第二列
+    v_cross_I[2] = float3(v.y, -v.x, 0); // 第三列
+
+    return v_cross_I;
+}
+bool BoundsDetective3P(uint id1, uint id2, uint id3)
+{
+    bool edge_1 = false;
+
+    //判断是不是在边界上
+    if ((id1 + 1) % rawCount == 0 && (id2 + 1) % rawCount == 1)
+        edge_1 = true;
+    if ((id2 + 1) % rawCount == 0 && (id1 + 1) % rawCount == 1)
+        edge_1 = true;
+    if ((id2 + 1) % rawCount == 0 && (id3 + 1) % rawCount == 1)
+        edge_1 = true;
+    if ((id3 + 1) % rawCount == 0 && (id2 + 1) % rawCount == 1)
+        edge_1 = true;
+    if ((id1 + 1) % rawCount == 0 && (id3 + 1) % rawCount == 1)
+        edge_1 = true;
+    if ((id3 + 1) % rawCount == 0 && (id1 + 1) % rawCount == 1)
+        edge_1 = true;
+    
+    return edge_1;
+}
+bool BoundsDetective2P(uint id1, uint id2)
+{
+    bool edge_1 = false;
+    //判断是不是在边界上
+    if ((id1 + 1) % rawCount  == 0 && (id2 + 1) % rawCount  == 1)
+        edge_1 = true;
+    if ((id2 + 1) % rawCount  == 0 && (id1 + 1) % rawCount  == 1)
+        edge_1 = true;
+    
+    return edge_1 && edge_1;
+}
+//有多少个顶点做多少层约束
+[numthreads(64,1,1)]
+void Constraint(uint3 id : SV_DispatchThreadID)
+{
+
+     //在StructuredBuffer中的索引
+    int index = IdTransform(id);
+    
+    if (index >= meshVertexNums)
+        return;
+    
+    for (int s = 0; s < simulationTimes; s++)
+    {
+        int id0 = index;  
+        int id1 = index;
+        
+        switch (s)
+        {
+            case 0:
+                id1 = id0 + 1;
+                break;
+            case 1:
+                id1 = id0 - 1;
+                break;
+            case 2:
+                id1 = id0 + rawCount;
+                break;
+            case 3:
+                id1 = id0 - rawCount;
+                break;
+            case 4: 
+                id1 = id0 + rawCount + 1;
+                break;
+            case 5:
+                id1 = id0 + rawCount - 1;
+                break;
+            case 6:
+                id1 = id0 - rawCount - 1;
+                break;
+            case 7:
+                id1 = id0 - rawCount + 1;
+                break;
+        }
+        
+        if (id1 < 0 || id1 >= meshVertexNums || id0 < 0 || id0 >= meshVertexNums)
+            continue;
+        if (BoundsDetective2P(id0,id1))
+            continue;
+        
+        float w0 = nowPoint[id0].Mass;
+        float w1 = nowPoint[id1].Mass;
+        float w_T = w0 + w1;
+        
+        if (w_T == 0)
+        {
+            continue;
+        }
+        
+        float3 tempNow = nowPoint[id0].Position;
+        float3 tempNow_2 = nowPoint[id1].Position;
+            // |x0-x1|
+        float l = distance(tempNow, tempNow_2);
+                // x0 - x1
+        float3 dir = nowPoint[id0].Position - nowPoint[id1].Position;
+        
+        if (l == 0)
+        {
+            continue;
+        }
+        
+        //gradC = (xo-x1) / |x0-x1| 
+        float3 gradC_x0 = dir / l;
+        float3 gradC_x1 = -dir / l;
+        float gradC_Length = length(gradC_x0);
+        
+        float3 tempPre = prePoint[id0].Position;
+        float3 tempPre_2 = prePoint[id1].Position;
+        float l_rest = distance(tempPre, tempPre_2);
+
+        float C = l - l_rest;
+        float gradC_2 = pow(gradC_Length, 2);
+        
+             // 我们采用的是每帧更新 n次约束，因此lambda每次都应该重置为0,也就可以将d_lambda等同于lambda
+                // d_lambda = (-C - alpha*lambda) / (gradC * w_T * gradC_T + alpha)
+        float lambda = -C / (w_T * gradC_2 + alpha);
+
+                //x = x + deltaX where deltaX = gradC * w_T(i) * lambda
+        float3 correction_x0 = lambda * gradC_x0;
+        float3 correction_x1 = lambda * gradC_x1;
+
+        nowPoint[id0].Position +=  w0 * correction_x0;
+        nowPoint[id1].Position +=   w1 * correction_x1; //对上述求导过程未区分的修正
+        
+    }
+    
+}
+
+
+
+
+[numthreads(64, 1, 1)]
+void Constraint_Size(uint3 id : SV_DispatchThreadID)
+{
+
+     //在StructuredBuffer中的索引
+    int index = IdTransform(id);
+    
+    if (index >= meshVertexNums)
+        return;
+    
+    for (int s = 0; s < simulationTimes; s++)
+    {
+        int id0 = index;      
+        int id1 = index;
+        int id2 = index;
+        
+        switch (s)
+        {
+            case 0:
+                id1 = id0 + 1;
+                id2 = id0 + rawCount;
+                break;
+            case 1:
+                id1 = id0 + 1;
+                id2 = id0 - rawCount;
+                break;
+            case 2:
+                id1 = id0 - 1;
+                id2 = id0 - rawCount;
+                break;
+            case 3:
+                id1 = id0 - 1;
+                id2 = id0 + rawCount;
+                break;   
+                    //case 4: id1 = i + 12; break;
+        }
+        
+        if (id2 < 0 || id2 >= meshVertexNums || id1 < 0 || id1 >= meshVertexNums || id0 < 0 || id0 >= meshVertexNums)
+            continue;
+        if (BoundsDetective3P(id0,id1,id2))
+            continue;
+        
+        float w0 = nowPoint[id0].Mass;
+        float w1 = nowPoint[id1].Mass;
+        float w2 = nowPoint[id2].Mass;
+        float w_T = w0 + w1 + w2;
+        
+        if (w_T == 0)
+        {
+            continue;
+        }
+        
+        float3 dir1 = (nowPoint[id1].Position - nowPoint[id0].Position);
+        float3 dir2 = (nowPoint[id2].Position - nowPoint[id0].Position);
+        
+        float l_dir1 = length(dir1);
+        float l_dir2 = length(dir2);
+        
+        if (l_dir1 == 0 || l_dir2 == 0)
+            continue;       
+        
+        float Square = 0.5f * length(cross(dir1, dir2));
+        
+        float3 dir1_rest = (prePoint[id1].Position - prePoint[id0].Position);
+        float3 dir2_rest = (prePoint[id2].Position - prePoint[id0].Position);
+        
+        float Square_rest = 0.5f * length(cross(dir1_rest, dir2_rest));
+        
+        float C = Square - Square_rest;
+        
+        float3 temp = cross(dir1, dir2);
+        
+        float3 temp_N = normalize(temp);
+        
+        if (length(temp_N) == 0)
+            continue;
+        
+        float3 grad_x0 = mul(temp_N, (nowPoint[id0].Position - nowPoint[id2].Position + nowPoint[id0].Position - nowPoint[id1].Position));
+        float3 grad_x1 = mul(temp_N, (nowPoint[id2].Position - nowPoint[id0].Position));
+        float3 grad_x2 = mul(temp_N, (nowPoint[id1].Position - nowPoint[id0].Position));
+        
+        float l_grad_x0 = length(grad_x0);
+        float l_grad_x1 = length(grad_x1);
+        float l_grad_x2 = length(grad_x2);
+        
+        if (l_grad_x0 == 0 && l_grad_x1 == 1 && l_grad_x2 == 0)
+            continue;
+        
+        float lambda = -C / (w0 * pow(l_grad_x0, 2) +w1 * pow(l_grad_x1, 2) +w2 * pow(l_grad_x2,2) + alpha);
+        
+        
+        float3 correction_x0 = lambda * grad_x0;
+        float3 correction_x1 = lambda * grad_x1;
+        float3 correction_x2 = lambda * grad_x2;
+        
+        
+        nowPoint[id0].Position += w0 * correction_x0;
+        nowPoint[id1].Position += w1 * correction_x1;
+        nowPoint[id2].Position += w2 * correction_x2;
+    }
+    
+}
+
+
+
+
+
+//固定点约束
+[numthreads(64,1,1)]
+void Constraint_Fixed(uint3 id : SV_DispatchThreadID)
+{
+    int index = IdTransform(id);
+    
+    if (index >= meshVertexNums)
+        return;
+    
+    for (int s = 0; s < 5; s++)
+    {
+        int id0 = index;
+           
+                    //case 4: id1 = i + 12; break;      
+        
+        if (id0 < 0 || id0 >= meshVertexNums)
+            continue;
+        
+        float w0 = nowPoint[id0].Mass;
+        float w_T = w0;
+        
+        if (w_T == 0)
+        {
+            continue;
+        }                     
+        float3 FixedPos_1 = float3(5, 0, 5);
+        
+        float3 FixedPos_2 = float3(-5, 0, 5);
+        
+        float C_1 = length(nowPoint[id0].Position - FixedPos_1);      
+        float C_2 = length(nowPoint[id0].Position - FixedPos_2);
+        
+        if (C_1 == 0||C_2 == 0)
+            continue;
+        
+        float C_Pre_1 = length(prePoint[id0].Position - FixedPos_1);
+        float C_Pre_2 = length(prePoint[id0].Position - FixedPos_2);
+        
+        float l_1 = C_1 - C_Pre_1 > 0 ? C_1 - C_Pre_1 : 0;
+        float l_2 = C_2 - C_Pre_2 > 0 ? C_2 - C_Pre_2 : 0;
+        
+        float3 grad_C1 = normalize(nowPoint[id0].Position - FixedPos_1);        
+        float3 grad_C2 = normalize(nowPoint[id0].Position - FixedPos_2);
+        
+
+
+        // 我们采用的是每帧更新 n次约束，因此lambda每次都应该重置为0,也就可以将d_lambda等同于lambda
+                // d_lambda = (-C - alpha*lambda) / (gradC * w_T * gradC_T + alpha)
+        
+        float lambda_1 = -l_1 / (w0 * 1 + alpha * 10);
+        
+        float lambda_2 = -l_2 / (w0 * 1 + alpha * 10);
+  
+        
+        
+        float3 correction = lambda_1 * grad_C1 +lambda_2 * grad_C2;
+            
+        
+        nowPoint[id0].Position += w0 * correction;
+      
+    }
+}
+
+[numthreads(64, 1, 1)]
+void Constraint_Bend(uint3 id : SV_DispatchThreadID)
+{
+         //在StructuredBuffer中的索引
+    int index = IdTransform(id);
+    
+    if (index >= meshVertexNums)
+        return;
+    
+    for (int s = 0; s < 4; s++)
+    {
+        int id1 = index; //一个边上的顶点
+        int id2 = index;//与边组成三角形1
+        int id3 = index;//另一个边上的顶点
+        int id4 = index;//与边组成三角形2
+        
+        switch (s)
+        {
+            case 0:
+                id2 = id1 + rawCount + 1;
+                id3 = id1 + rawCount;
+                id4 = id1 + 1;
+                break; 
+            case 1:
+                id2 = id1 + rawCount -1;
+                id3 = id1 + rawCount;
+                id4 = id1 - 1;
+                break;
+            case 2:
+                id2 = id1 - rawCount + 1;
+                id3 = id1 - rawCount;
+                id4 = id1 + 1;
+                break;
+            case 3:
+                id2 = id1 - rawCount - 1;
+                id3 = id1 - rawCount;
+                id4 = id1 - 1;
+                break;
+            default:
+                break;
+                    //case 4: id1 = i + 12; break;*/
+        }
+        
+        if (id4 < 0 || id4 >= meshVertexNums||id3 < 0 || id3 >= meshVertexNums || id2 < 0 || id2 >= meshVertexNums || id1 < 0 || id1 >= meshVertexNums)
+            continue;
+        if (BoundsDetective3P(id1, id2, id3) || BoundsDetective3P(id1, id2, id4))
+            continue;
+        
+        
+        float w1 = nowPoint[id1].Mass;
+        float w2 = nowPoint[id2].Mass;
+        float w3 = nowPoint[id3].Mass;
+        float w4 = nowPoint[id4].Mass;
+        float w_T = w4 + w1 + w2 + w3;
+        
+        if (w_T == 0)
+        {
+            continue;
+        }
+        
+        //相对位置
+        float3 p1 = float3(0, 0, 0);
+        float3 p2 = nowPoint[id2].Position - nowPoint[id1].Position;
+        float3 p3 = nowPoint[id3].Position - nowPoint[id1].Position;
+        float3 p4 = nowPoint[id4].Position - nowPoint[id1].Position;      
+        
+        float3 Triangle_Normal_1 = cross(p2, p3);
+        float3 Triangle_Normal_2 = cross(p2, p4);
+        
+        float3 Triangle_Normal_1_n = normalize(Triangle_Normal_1);
+        float3 Triangle_Normal_2_n = normalize(Triangle_Normal_2);
+        
+        float Length_N1 = length(Triangle_Normal_1);
+        float Length_N2 = length(Triangle_Normal_2);
+        
+        if (Length_N1 <= 0 || Length_N2 <= 0)
+            continue;
+        
+        float CosTheta = dot(normalize(Triangle_Normal_1), normalize(Triangle_Normal_2));
+        if(abs(CosTheta) > 1)
+            continue;       
+        
+        float SintTheta = 1 - CosTheta * CosTheta;
+        if(SintTheta < 0)
+            continue;
+        float Theta = acos(CosTheta);
+        
+        float3 Triangle_Normal_1_rest = cross(prePoint[id2].Position - prePoint[id1].Position, prePoint[id3].Position - prePoint[id1].Position);
+        float3 Triangle_Normal_2_rest = cross(prePoint[id2].Position - prePoint[id1].Position, prePoint[id4].Position - prePoint[id1].Position);
+        
+        if (length(Triangle_Normal_1_rest) <= 0 || length(Triangle_Normal_2_rest) <= 0)
+            continue;
+        
+        float CosTheta_rest = dot(normalize(Triangle_Normal_1_rest), normalize(Triangle_Normal_2_rest));
+        
+        if (abs(CosTheta_rest) > 1)
+            continue;
+        
+        float Theta_rest = acos(CosTheta_rest);
+        
+        float C = (Theta - Theta_rest) / 6.28f; //说实话这个不是公式给的是大概为了效果做的。除以2PI
+                
+        float grad_acos = sqrt(1 - CosTheta * CosTheta) ;
+
+        //求导有难度 acos( (p1 - p0) x (p2 - p0) · (p3 - p2) x (p0 - p2)) 对 p1 p2 p3 p4 求导
+        
+        float3 grad_x4 =  (cross(p2, Triangle_Normal_1_n) + cross(Triangle_Normal_2_n, p2) * CosTheta) / length(cross(p2,p3));
+        float3 grad_x3 =  (cross(p2, Triangle_Normal_2_n) + cross(Triangle_Normal_1_n, p2) * CosTheta) / length(cross(p2,p4));
+        float3 grad_x2 =  -(cross(p3, Triangle_Normal_2_n) + cross(Triangle_Normal_1_n, p3) * CosTheta) / length(cross(p2, p3)) - (cross(p4, Triangle_Normal_1_n) + cross(Triangle_Normal_2_n, p4) * CosTheta) / length(cross(p2, p4));
+        float3 grad_x1 = -grad_x2 - grad_x3 - grad_x4;
+        
+        
+        float l_grad_x1 = length(grad_x1);
+        float l_grad_x2 = length(grad_x2);
+        float l_grad_x3 = length(grad_x3);
+        float l_grad_x4 = length(grad_x4);
+        
+      
+        
+        float lambda = (-C * grad_acos) / (w1 * pow(l_grad_x1, 2) + w2 * pow(l_grad_x2, 2) + w3 * pow(l_grad_x3, 2) + w4 * pow(l_grad_x4, 2) + alpha);
+        
+        
+        float3 correction_x1 = lambda * (grad_x1);
+        float3 correction_x2 = lambda * (grad_x2);
+        float3 correction_x3 = lambda * (grad_x3);
+        float3 correction_x4 = lambda * (grad_x4);
+        
+        
+        nowPoint[id1].Position += w1 * correction_x1;
+        nowPoint[id2].Position += w2 * correction_x2;
+        nowPoint[id3].Position += w3 * correction_x3;
+        nowPoint[id4].Position += w4 * correction_x4;
+    }
+}
+
+[numthreads(64, 1, 1)]
+void Constraint_SelfCollsion(uint3 id : SV_DispatchThreadID)
+{
+    
+     //在StructuredBuffer中的索引
+    int index = IdTransform(id);
+    
+    if (index >= meshVertexNums)
+        return;
+    
+    float w0 = nowPoint[index].Mass;
+    float3 my_p = nowPoint[index].Position;
+
+    for (int s = 0; s < meshVertexNums; s++)
+    {
+        int id1 = s;
+        
+        if(id1 < 0 || id1 >= meshVertexNums)
+        {
+            continue;
+        }
+        
+            float w1 = nowPoint[id1].Mass;
+            float w_T = w1 + w0;
+        
+            if (w_T == 0)
+            {
+                continue;
+            }
+        
+        float3 p1 = nowPoint[id1].Position;
+        
+        float3 dir = p1 - my_p;
+        float dis = length(dir);
+        
+        if (dis == 0)
+        {
+            continue;
+        }
+        
+        float C = dis >= 0.05f ? 0 :  dis;
+        
+        float3 grad_myp = dir / dis;
+        float3 grad_p1 = -dir / dis;
+        
+        float l_grad_myp = length(grad_myp);
+        float l_grad_p1 = length(grad_p1);
+        float lambda = -C / (w0 * pow(l_grad_myp, 2) + w1 * pow(l_grad_p1, 2) + alpha);
+        
+        float3 correction_myp = lambda * grad_myp;
+        float3 corrction_p1 = lambda * grad_p1;
+        
+        nowPoint[index].Position += w0 * correction_myp;
+        nowPoint[id1].Position += w1 * corrction_p1;
+    }
+    
+    /*
+    //下面的是不太明白的三角形碰撞
+     for (int s = 0; s < meshVertexNums; s++)
+    {
+        int id1 = s;
+        int id2 = s+1;
+        int id3 = s+11;
+               
+        if (id3 < 0 || id3 >= meshVertexNums || id2 < 0 || id2 >= meshVertexNums || id1 < 0 || id1 >= meshVertexNums)
+            continue;
+        
+        float w1 = nowPoint[id1].Mass;
+        float w2 = nowPoint[id2].Mass;
+        float w3 = nowPoint[id3].Mass;
+        float w_T =w0 + w1 + w2 + w3;
+        
+        if (w_T == 0)
+        {
+            continue;
+        }
+        
+        float3 myP = nowPoint[index].Position;
+        float3 p1 = nowPoint[id1].Position;
+        float3 p2 = nowPoint[id2].Position;
+        float3 p3 = nowPoint[id3].Position;
+        
+        
+        float3 OutsideNormal = cross(p2 - p1, p3 - p1);
+        float3 InsideNormal = cross(p3 - p1, p2 - p1);
+        
+        float L_Out = length(OutsideNormal);
+        float L_In = length(InsideNormal);
+        
+        if (length(p2 - p1) == 0||length(p3 - p1) == 0 || L_Out == 0 || L_In == 0)
+        {
+            continue;
+        }
+        
+            float3 OutsideNormal_n = (OutsideNormal) / L_Out;
+            float3 InsideNormal_n = (InsideNormal) / L_In;
+        
+        //这里的1F是厚度
+            float C_Out = dot(my_p - p1, OutsideNormal_n) - 0.1f;
+            float C_In = dot(my_p - p1, InsideNormal_n) - 0.1f;
+        
+            float3 grad_my = dot(my_p - p1, OutsideNormal_n) > 0 ? C_Out : C_In;
+            float3 grad_x1 = -grad_my;
+            float3 grad_x2 = L_Out * (p3 - p1) - OutsideNormal * (mul(OutsideNormal_n, V_cross_I(p3 - p1))) / (L_Out * L_Out);
+            float3 grad_x3 = L_Out * (p2 - p1) - OutsideNormal * (mul(OutsideNormal_n, I_cross_V(p2 - p1))) / (L_Out * L_Out);
+
+            float l_grad_my = length(grad_my);
+            float l_grad_x1 = length(grad_x1);
+            float l_grad_x2 = length(grad_x2);
+            float l_grad_x3 = length(grad_x3);
+        
+            float lambda = -C_Out / (w0 * pow(l_grad_my, 2) + w1 * pow(l_grad_x1, 2) + w2 * pow(l_grad_x2, 2) + w3 * pow(l_grad_x3, 2) + alpha);
+        
+            float3 correction_my = lambda * grad_my;
+            float3 correction_x1 = lambda * grad_x1;
+            float3 correction_x2 = lambda * grad_x2;
+            float3 correction_x3 = lambda * grad_x3;
+        
+            nowPoint[index].Position += w0 * correction_my;
+            nowPoint[id1].Position += w1 * correction_my;
+            nowPoint[id2].Position += w2 * correction_my;
+            nowPoint[id3].Position += w3 * correction_my;
+    }
+        */
+    
+}
+    
+
