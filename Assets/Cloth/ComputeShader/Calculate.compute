@@ -8,12 +8,14 @@ struct Point
     float padding;
 };
 
+float gamma; //阻尼项
 float deltaTime;
 float meshVertexNums;
 RWStructuredBuffer<Point> nowPoint; //代表现在的顶点的状态
 RWStructuredBuffer<Point> postPoint; //代表上次的顶点的状态
 RWStructuredBuffer<Point> prePoint; //初始状态
 
+StructuredBuffer<Point> outputPoint; //作为共享内存的Buffer直接传递给物体 减少等待同步的情况
 
 //id的转换 转换到StructuredBuffer下 一一对应吧.
 int IdTransform(uint3 id)
@@ -30,13 +32,9 @@ void Calculate(uint3 id : SV_DispatchThreadID)
     if (index >= meshVertexNums)
         return;
     
-    float3 TmepV = nowPoint[index].Position;
-    nowPoint[index].Position = TmepV;
-    
-
     float3 velocity = (nowPoint[index].Position - postPoint[index].Position) / deltaTime;
-    nowPoint[index].Velocity = velocity;
+    //阻尼的影响
+    //nowPoint[index].Velocity = (1 - gamma) * velocity;
+    nowPoint[index].Velocity = (1 - gamma) * velocity;
     
-    float3 TempV = nowPoint[index].Velocity;
-    nowPoint[index].Velocity = TempV;
 }

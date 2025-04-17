@@ -1,7 +1,7 @@
 ﻿
+using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
-using NUnit.Framework.Internal;
 using Unity.VisualScripting;
 using UnityEngine;
 using UnityEngine.AI;
@@ -20,13 +20,13 @@ public struct Particle
     public Vector3 Position { get; set; }
     public Vector3 Velocity { get; set; }
 
-    public float padding;
+    public float lambda_prev;
     public Particle(Vector3 position,float mass)
     {
         Position = position;
         Mass = mass;
         Velocity = new Vector3(0, 0, 0);
-        padding = 0;
+        lambda_prev = 0;
     }
 }
 
@@ -73,7 +73,7 @@ public class Constraint
     /// 约束的执行，具体实现写在update里了. 不同的约束不同执行方式吧，这个是最基本的
     /// </summary>
     /// <param name="dt"></param>
-    public virtual void Execute(float dt, int DispatchNumX, int DispatchNumY, int DispatchNumZ)
+    public virtual void Execute(float dt, int DispatchNumX, int DispatchNumY, int DispatchNumZ, float Stiffness,float Gamma)
     {
         //示例
         /*
@@ -131,12 +131,12 @@ public class Constraint_Distance : Constraint
         testIndex = ConstraintCompute.FindKernel("Constraint_Size");
         testIndex_2 = ConstraintCompute.FindKernel("Constraint_Fixed");
         testIndex_3 = ConstraintCompute.FindKernel("Constraint_Bend");
-        testIndex_4 = ConstraintCompute.FindKernel("Constraint_SelfCollsion");
+        testIndex_4 = ConstraintCompute.FindKernel("Constraint_Shear");
     }
-    public override void Execute(float dt, int DispatchNumX, int DispatchNumY, int DispatchNumZ)
+    public override void Execute(float dt, int DispatchNumX, int DispatchNumY, int DispatchNumZ,float Stiffness,float Gamma)
     {
-
-        ConstraintCompute.SetFloat("alpha", 0.1f / (Time.fixedDeltaTime * Time.fixedDeltaTime));
+        ConstraintCompute.SetFloat("gamma", Gamma);
+        ConstraintCompute.SetFloat("alpha", Stiffness / (Time.fixedDeltaTime * Time.fixedDeltaTime));
         ConstraintCompute.SetFloat("deltaTime", Time.deltaTime / 20f);
         ConstraintCompute.SetInt("simulationTimes", 8);
         ConstraintCompute.SetInt("meshVertexNums", VertexNum);
@@ -160,17 +160,19 @@ public class Constraint_Distance : Constraint
         ConstraintCmd.SetComputeBufferParam(ConstraintCompute, testIndex_2, m_PrePosBufferName, m_PrePointBuffer);
         ConstraintCmd.SetComputeBufferParam(ConstraintCompute, testIndex_2, m_NowPosBufferName, m_NowPointBuffer);
         ConstraintCmd.SetComputeBufferParam(ConstraintCompute, testIndex_2, m_PostPosBufferName, m_PostPointBuffer);
-        ConstraintCmd.DispatchCompute(ConstraintCompute, testIndex_2, DispatchNumX, DispatchNumY, DispatchNumZ);
+        //ConstraintCmd.DispatchCompute(ConstraintCompute, testIndex_2, DispatchNumX, DispatchNumY, DispatchNumZ);
+
+        ConstraintCmd.SetComputeBufferParam(ConstraintCompute, testIndex_4, m_PrePosBufferName, m_PrePointBuffer);
+        ConstraintCmd.SetComputeBufferParam(ConstraintCompute, testIndex_4, m_NowPosBufferName, m_NowPointBuffer);
+        ConstraintCmd.SetComputeBufferParam(ConstraintCompute, testIndex_4, m_PostPosBufferName, m_PostPointBuffer);
+        ConstraintCmd.DispatchCompute(ConstraintCompute, testIndex_4, DispatchNumX, DispatchNumY, DispatchNumZ);
 
         ConstraintCmd.SetComputeBufferParam(ConstraintCompute, testIndex_3, m_PrePosBufferName, m_PrePointBuffer);
         ConstraintCmd.SetComputeBufferParam(ConstraintCompute, testIndex_3, m_NowPosBufferName, m_NowPointBuffer);
         ConstraintCmd.SetComputeBufferParam(ConstraintCompute, testIndex_3, m_PostPosBufferName, m_PostPointBuffer);
         ConstraintCmd.DispatchCompute(ConstraintCompute, testIndex_3, DispatchNumX, DispatchNumY, DispatchNumZ);
 
-        ConstraintCmd.SetComputeBufferParam(ConstraintCompute, testIndex_4, m_PrePosBufferName, m_PrePointBuffer);
-        ConstraintCmd.SetComputeBufferParam(ConstraintCompute, testIndex_4, m_NowPosBufferName, m_NowPointBuffer);
-        ConstraintCmd.SetComputeBufferParam(ConstraintCompute, testIndex_4, m_PostPosBufferName, m_PostPointBuffer);
-        ConstraintCmd.DispatchCompute(ConstraintCompute, testIndex_4, DispatchNumX, DispatchNumY, DispatchNumZ);
+      
 
         ConstraintCmd.EndSample("Constraint");
         //可能还需要设置一些？       
@@ -198,11 +200,17 @@ public class XPBD : MonoBehaviour
     static string m_PrePosBufferName = "prePoint";
     static string m_PostPosBufferName = "postPoint";
 
-
+    [Range(0.0001f,10f)]
+    [Header("柔度")]
+    public float stiffness;
+    [Range(0,1)]
+    [Header("阻尼")]
+    public float gamma;
     public Mesh testMesh;
     //距离的迭代约束项.
     public Constraint_Distance m_Constraint_Distance;
     public CommandBuffer cmd;
+    public Material m_Material;
     public ComputeShader m_ComputeShader;
     //布料与外力交互的项(为速度什么赋值什么的，毕竟是XPBD)
     public ComputeShader m_InteractionCS;
@@ -251,12 +259,8 @@ public class XPBD : MonoBehaviour
         for (int i = 0;i<testMesh.vertices.Length;i++)
         {
             //
-            if (i == 0 || i == (int)Mathf.Sqrt(testMesh.vertexCount) - 1)
+            if (i == 0 || i == (int)Mathf.Sqrt(testMesh.vertexCount) - 1 || i == testMesh.vertexCount - 1 || i == testMesh.vertexCount - (int)Mathf.Sqrt(testMesh.vertexCount))
             {
-                if(i == (int)Mathf.Sqrt(testMesh.vertexCount) - 1)
-                {
-                    testMesh.vertices[i] = new Vector3(0, 0, 5f);
-                }
                     m_PointList.Add(new Particle(testMesh.vertices[i], 0f));
             }
             else
@@ -283,12 +287,15 @@ public class XPBD : MonoBehaviour
 
         InitialInteraciton();
         InitialCalculate();
+
+        m_Material.SetBuffer("nowPoint",m_NowPointBuffer);
     }
 
-    private void FixedUpdate()
+    private void Update()
     {
         num++;
         {
+            
             m_NowPointBuffer.GetData(particles);
 
 
@@ -306,71 +313,57 @@ public class XPBD : MonoBehaviour
 
 
             cmd.SetBufferData(m_NowPointBuffer, particles);
+            
         }
 
             cmd.BeginSample("ClothCompute");
-            for (int i = 0; i < 20; i++)
-            {
 
-                //交互项执行
+   
+        {
+            //交互项执行
                 InteractionExecute();
-                //这中间是约束项执行
-                {
-                    m_Constraint_Distance.Execute(Time.deltaTime, DispatchNumX, DispatchNumY, DispatchNumZ);
-                }
-                //最后速度结算执行
-                CalculateExecute();
+            //这中间是约束项执行
+            {
+                m_Constraint_Distance.Execute(Time.deltaTime, DispatchNumX, DispatchNumY, DispatchNumZ, stiffness,gamma);
             }
+            //最后速度结算执行
+            CalculateExecute();
+        }
         
         cmd.EndSample("ClothCompute");
         Graphics.ExecuteCommandBuffer(cmd);
         cmd.Clear();
 
     }
-
     /// <summary>
     /// 初始化交互计算的CS
     /// </summary>
     private void InitialInteraciton()
     {
-        m_InteractionCS.SetFloat("deltaTime", Time.deltaTime / 20f);
+        m_InteractionCS.SetFloat("deltaTime", Time.deltaTime / 5f);
         m_InteractionCS.SetInt("meshVertexNums", VertexNum);
         m_InteractionCS.SetInt("rawCount", (int)Mathf.Sqrt(VertexNum));
-        m_InteractionCS.SetFloat("VoxelSize", WindManager.VoxelSize);
-        m_InteractionCS.SetVector("WindCenterPos", this.transform.position);
-        m_InteractionCS.SetVector("WindFieldSize", WindManager.Instance.GetWindFieldSize());
-
     }
     /// <summary>
     /// 执行交互计算的CS
     /// </summary>
     private void InteractionExecute()
     {
-        Matrix4x4 temp = this.transform.localToWorldMatrix;
-        m_InteractionCS.SetMatrix("LocalToWorld", temp);
-        
-        Matrix4x4 rotationMatrix = new Matrix4x4();
-        rotationMatrix.SetColumn(0, temp.GetColumn(0).normalized);
-        rotationMatrix.SetColumn(1, temp.GetColumn(1).normalized);
-        rotationMatrix.SetColumn(2, temp.GetColumn(2).normalized);
-        rotationMatrix.SetColumn(3, new Vector4(0, 0, 0, 1)); // 忽略平移
+        Matrix4x4 temp = this.transform.localToWorldMatrix.inverse;
+        m_InteractionCS.SetMatrix("WorldToLocal", temp);
 
-        m_InteractionCS.SetMatrix("RotationWorldToLoacl", rotationMatrix);
-      
         int InteractionKernelIndex = m_InteractionCS.FindKernel(m_InteractionName);
-        cmd.SetComputeTextureParam(m_InteractionCS, InteractionKernelIndex, "WindField", WindManager.Instance.GetWindField());
         cmd.SetComputeBufferParam(m_InteractionCS, InteractionKernelIndex, m_PrePosBufferName, m_PrePointBuffer);
         cmd.SetComputeBufferParam(m_InteractionCS, InteractionKernelIndex, m_NowPosBufferName, m_NowPointBuffer);
         cmd.SetComputeBufferParam(m_InteractionCS, InteractionKernelIndex, m_PostPosBufferName, m_PostPointBuffer);
         cmd.DispatchCompute(m_InteractionCS, InteractionKernelIndex, DispatchNumX, DispatchNumY, DispatchNumZ);
     }
-
     /// <summary>
     /// 执行结算项的初始化,
     /// </summary>
     private void InitialCalculate()
     {
-        m_CalculateCS.SetFloat("deltaTime", Time.deltaTime / 20f);
+        m_CalculateCS.SetFloat("deltaTime", Time.deltaTime / 5f);
         m_CalculateCS.SetInt("meshVertexNums", VertexNum);
         m_CalculateCS.SetInt("rawCount", (int)Mathf.Sqrt(VertexNum));
     }
@@ -378,7 +371,7 @@ public class XPBD : MonoBehaviour
     /// 执行最后速度计算的CS
     /// </summary>
     private void CalculateExecute()
-    {       
+    {
         int CalculateKernelIndex = m_CalculateCS.FindKernel(m_CalculateName);
         cmd.SetComputeBufferParam(m_CalculateCS, CalculateKernelIndex, m_PrePosBufferName, m_PrePointBuffer);
         cmd.SetComputeBufferParam(m_CalculateCS, CalculateKernelIndex, m_NowPosBufferName, m_NowPointBuffer);
