@@ -32,7 +32,6 @@ public class WindRender : ScriptableRendererFeature
         kernel_Out = "OutputResult",
         kernel_AddForce = "CSAddForce",
         kernel_Diffusion_1 = "CSDiffusion",
-        kernel_Advect_Positive = "CSAdvect_Positive",
         kernel_Advect_Negative = "CSAdvect_Negative",
         kernel_Project_1 = "CSProj_1",
         kernel_Project_2 = "CSProj_2",

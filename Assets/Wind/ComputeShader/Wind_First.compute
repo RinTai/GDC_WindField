@@ -2,7 +2,7 @@
 #pragma kernel CSAddForce
 #pragma enable_d3d11_debug_symbols
 
-#include "D:\unityProj\Wind\Assets\Wind\ComputeShader\WindMotor.hlsl"
+#include "Assets/Wind/ComputeShader/WindMotor.hlsl"
 
 bool IsAdd;
 half3 MoveVelocity;

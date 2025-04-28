@@ -1,9 +1,6 @@
-﻿using System.Collections;
-using System.Collections.Generic;
-using Unity.Mathematics;
-using Unity.VisualScripting;
+﻿
 using UnityEngine;
-using UnityEngine.UIElements;
+
 //三种风力发动机
 public enum MotorType
 {
@@ -53,10 +50,12 @@ public struct MotorCylinder
     public float radiusTopSq;
     public float force;
 }
+
+
 /// <summary>
 /// 发动机有时存在有时候消散
 /// </summary>
-[ExecuteAlways]
+[DefaultExecutionOrder(410)]
 public class WindMotor : MonoBehaviour
 {
     public MotorType MotorType;
@@ -119,14 +118,14 @@ public class WindMotor : MonoBehaviour
     {
         WindManager.Instance.AddWindMotor(this);
        
-        WindRender.m_WindFieldPass.AddWindMotor(this);
+        // WindRender.m_WindFieldPass.AddWindMotor(this);
         m_CreateTime = Time.fixedTime;
     }
 
     private void OnDisable()
     {
         WindManager.Instance.RemoveWindMotor(this);
-        WindRender.m_WindFieldPass.RemoveWindMotor(this);
+        // WindRender.m_WindFieldPass.RemoveWindMotor(this);
     }
 
     /// <summary>

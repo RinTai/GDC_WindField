@@ -6,17 +6,17 @@ namespace MatrixEigen
     public static class EigenMatrix
     {
         /// <summary>
-        /// ¹¹½¨given¾ØÕó //0<=i<j<=3
+        /// æ„å»ºgivençŸ©é˜µ //0<=i<j<=3
         /// </summary>
-        /// <param name="i">0-2Ö®¼äµÄÕûÊı</param>
-        /// <param name="j">1-3Ö®¼äµÄÕûÊı ´óÓÚi</param>
-        /// <param name="rad">»¡¶È</param>
+        /// <param name="i">0-2ä¹‹é—´çš„æ•´æ•°</param>
+        /// <param name="j">1-3ä¹‹é—´çš„æ•´æ•° å¤§äºi</param>
+        /// <param name="rad">å¼§åº¦</param>
         /// <returns></returns>
         public static float4x4 GivenMatrix(int i, int j, float rad)
         {
             if (i < 0 || i > 2 || j < 1 || j > 3 || i >= j)
             {
-                Debug.LogError("Index³¬¹ıÏŞÖÆ");
+                Debug.LogError("Indexè¶…è¿‡é™åˆ¶");
                 return float4x4.identity;
             }
 
@@ -76,7 +76,7 @@ namespace MatrixEigen
         {
 
             float denom = math.sqrt(vec.x * vec.x + vec.y * vec.y);
-            if (denom <= 0)//Îª0ÏòÁ¿
+            if (denom <= 0)//ä¸º0å‘é‡
             {
                 return float2x2.identity;
             }
@@ -89,7 +89,7 @@ namespace MatrixEigen
 
 
         /// <summary>
-        /// ÄÃµ½Ò»¸ö4Î¬ÏòÁ¿µÄ¶à¸ögiven¾ØÕó ÊÇÕı½»Õó ĞĞÁĞÊ½Îª1 Ê¹µÃ¸ÃËÄÎ»ÏòÁ¿¾­¹ı¸Ã¾ØÕó±ä»»ºó ÆäµÚ1Î¬µ½µÚn-1Î¬µÄÖµ¶¼Îª0
+        /// æ‹¿åˆ°ä¸€ä¸ª4ç»´å‘é‡çš„å¤šä¸ªgivençŸ©é˜µ æ˜¯æ­£äº¤é˜µ è¡Œåˆ—å¼ä¸º1 ä½¿å¾—è¯¥å››ä½å‘é‡ç»è¿‡è¯¥çŸ©é˜µå˜æ¢å å…¶ç¬¬1ç»´åˆ°ç¬¬n-1ç»´çš„å€¼éƒ½ä¸º0
         /// </summary>
         /// <param name="vec"></param>
         /// <returns></returns>
@@ -97,7 +97,7 @@ namespace MatrixEigen
         {
             float denom03 = math.sqrt(vec.x * vec.x + vec.y * vec.y + vec.z * vec.z + vec.w * vec.w);
 
-            if (denom03 <= 0)//Îª0ÏòÁ¿
+            if (denom03 <= 0)//ä¸º0å‘é‡
             {
                 return float4x4.identity;
             }
@@ -133,7 +133,7 @@ namespace MatrixEigen
             float4x4 T01 = new float4x4(c, s, 0, 0,
                                       -s, c, 0, 0,
                                       0, 0, 1, 0,
-                                      0, 0, 0, 1);//³õµÈĞı×ª¾ØÕó
+                                      0, 0, 0, 1);//åˆç­‰æ—‹è½¬çŸ©é˜µ
             return math.mul(T03, math.mul(T02, T01));
         }
 
@@ -142,7 +142,7 @@ namespace MatrixEigen
         public static float3x3 Givens(float3 vec)
         {
             float denom02 = math.sqrt(vec.x * vec.x + vec.y * vec.y + vec.z * vec.z);
-            if (denom02 <= 0)//Îª0ÏòÁ¿
+            if (denom02 <= 0)//ä¸º0å‘é‡
             {
                 return float3x3.identity;
             }
@@ -163,7 +163,7 @@ namespace MatrixEigen
             s = vec.y / denom01;
             float3x3 T01 = new float3x3(c, s, 0,
                -s, c, 0,
-               0, 0, 1);//³õµÈĞı×ª¾ØÕó
+               0, 0, 1);//åˆç­‰æ—‹è½¬çŸ©é˜µ
 
             return math.mul(T02, T01);
         }
@@ -172,8 +172,8 @@ namespace MatrixEigen
         /// <summary>
         /// P-1 * A * P
         /// </summary>
-        /// <param name="a">A¾ØÕó Ô­Ê¼±»±ä»»µÄ¾ØÕó</param>
-        /// <param name="p">P¾ØÕó ¶Ô³ÆÕó ÕâÀïÊÇGivens¾ØÕó</param>
+        /// <param name="a">AçŸ©é˜µ åŸå§‹è¢«å˜æ¢çš„çŸ©é˜µ</param>
+        /// <param name="p">PçŸ©é˜µ å¯¹ç§°é˜µ è¿™é‡Œæ˜¯GivensçŸ©é˜µ</param>
         /// <returns></returns>
         public static float4x4 PT_A_P(float4x4 a, float4x4 p)
         {
@@ -182,7 +182,7 @@ namespace MatrixEigen
         }
 
         /// <summary>
-        ///  ¼ÆËãĞı×ª½Ç¶È
+        ///  è®¡ç®—æ—‹è½¬è§’åº¦
         /// </summary>
         /// <param name="i"></param>
         /// <param name="j"></param>
@@ -203,7 +203,7 @@ namespace MatrixEigen
             return 0.5f * math.atan(thelta);
         }
         /// <summary>
-        /// ¹¹ÔìGiven¾ØÕó
+        /// æ„é€ GivençŸ©é˜µ
         /// </summary>
         /// <param name="i"></param>
         /// <param name="j"></param>
@@ -216,8 +216,8 @@ namespace MatrixEigen
         }
 
         /// <summary>
-        /// µ¥´Îµü´ú
-        /// Ïà¶ÔÓÚÌ°ĞÄËã·¨ Õâ¸öÉÙÁË¸öÑ°ÕÒ×î´óÖµµÄ¹ı³Ì Ôö¼ÓÁË¸öãĞÖµÅĞ¶Ï
+        /// å•æ¬¡è¿­ä»£
+        /// ç›¸å¯¹äºè´ªå¿ƒç®—æ³• è¿™ä¸ªå°‘äº†ä¸ªå¯»æ‰¾æœ€å¤§å€¼çš„è¿‡ç¨‹ å¢åŠ äº†ä¸ªé˜ˆå€¼åˆ¤æ–­
         /// </summary>
         /// <param name="m"></param>
         /// <returns></returns>
@@ -232,14 +232,14 @@ namespace MatrixEigen
 
                     float4x4 p = GivenMatrix(i, j, m);
                     m = PT_A_P(m, p);
-                    P = math.mul(P, p);//×¢ÒâÕâÀïÊÇÓÒ³Ë
+                    P = math.mul(P, p);//æ³¨æ„è¿™é‡Œæ˜¯å³ä¹˜
                 }
             }
             return P;
         }
 
         /// <summary>
-        /// ¼ÆËã¾ØÕóµÄ·Ç¶Ô½ÇÔªËØµÄÆ½·½ºÍ
+        /// è®¡ç®—çŸ©é˜µçš„éå¯¹è§’å…ƒç´ çš„å¹³æ–¹å’Œ
         /// </summary>
         /// <param name="m"></param>
         /// <returns></returns>
@@ -257,7 +257,7 @@ namespace MatrixEigen
         }
 
         /// <summary>
-        /// ¶à´Îµü´úµÄ
+        /// å¤šæ¬¡è¿­ä»£çš„
         /// </summary>
         /// <param name="m"></param>
         /// <returns></returns>
@@ -270,7 +270,7 @@ namespace MatrixEigen
             {
                 float4x4 p = JacobiMatrix(m);
                 m = PT_A_P(m, p);
-                _P = math.mul(_P, p);//×¢ÒâÕâÀïÊÇÓÒ³Ë
+                _P = math.mul(_P, p);//æ³¨æ„è¿™é‡Œæ˜¯å³ä¹˜
                 s = NonDiagonalElementsSum(m);
                 //Debug.Log(s);
                 num++;

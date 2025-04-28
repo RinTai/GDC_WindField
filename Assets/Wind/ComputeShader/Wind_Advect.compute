@@ -122,7 +122,9 @@ half3 WindNegativeAdvectCompute(uint3 id, half dt)
     int num = 0;
     float3 velocityWS = 0;
     uint3 temp = uint3(x0, y0, z0);
-    if (temp.x >= 0 && temp.x <= WindFieldSize.x  && temp.y >= 0 && temp.y <= WindFieldSize.z  && temp.z >= 0 && temp.z <= WindFieldSize.y)
+    if (temp.x >= 0 && temp.x <= WindFieldSize.x  &&
+        temp.y >= 0 && temp.y <= WindFieldSize.z  &&
+        temp.z >= 0 && temp.z <= WindFieldSize.y)
     {
         velocityWS += V000 * (1 - xd) * (1 - yd) * (1 - zd);
     }

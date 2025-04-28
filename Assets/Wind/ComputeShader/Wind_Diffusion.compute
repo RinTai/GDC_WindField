@@ -11,10 +11,6 @@ RWTexture3D<half3> OutputResult;
 //迭代十次
 half3 WindDiffusionCompute_PingPong(half diff, uint3 id, half dt)
 {
-    half adt = VoxelSize * diff * dt  ;
-    
-    
-    
     int num = 0;
      //索引
     uint3 Self = uint3(id.x, id.y, id.z);
@@ -66,12 +62,16 @@ half3 WindDiffusionCompute_PingPong(half diff, uint3 id, half dt)
     half3 V_Left = id.z + 1 < WindFieldSize.y ? InputResult[Left] : V_Self;
     half3 V_Right = id.z - 1 >= 0 ? InputResult[Right] : V_Self;
    */
+
+    half adt = VoxelSize * diff * dt  ;
+    
     half3 diffusion_ping = (V_Self + adt * Sum) / (1 + num * adt);
     
    
     
     return diffusion_ping;
 }
+
 [numthreads(8,8,8)]
 void CSDiffusion (uint3 id : SV_DispatchThreadID)
 {
