@@ -28,7 +28,7 @@ public class WindManager : MonoBehaviour
     private const string bufferName = "DispatchBuffer";
     CommandBuffer cmd;
     private int WindFieldSizeX = 256;
-    private int WindFieldSizeY = 16;
+    private int WindFieldSizeY = 32;
     private int WindFieldSizeZ = 256;
     private static int MAXMOTOR = 10;
     private static int MAXVERTEX = 65536;
@@ -244,10 +244,12 @@ public class WindManager : MonoBehaviour
 
         debugParticle.SetTexture("_WindTexture", windField_FinalResult);
         debugParticle.SetVector3("_WindCenterPos", this.transform.position);
+        debugParticle.SetVector3("_WindFieldSize", new Vector3(WindFieldSizeX, WindFieldSizeY, WindFieldSizeZ));
 
         particleTest.SetFloat("_VoxelSize",VoxelSize);
         particleTest.SetTexture("_WindTexture", windField_FinalResult);
         particleTest.SetVector3("_WindCenterPos", this.transform.position);
+        particleTest.SetVector3("_WindFieldSize", new Vector3(WindFieldSizeX, WindFieldSizeY, WindFieldSizeZ));
 
 
         Graphics.ExecuteCommandBuffer(cmd);
@@ -315,6 +317,7 @@ public class WindManager : MonoBehaviour
         windField_FinalResult.enableRandomWrite = true;
 
         windField_FinalResult.filterMode = FilterMode.Bilinear;
+        windField_FinalResult.wrapMode = TextureWrapMode.Clamp;
 
         windField_Div_Pressure_Ping.Create();
         windField_Div_Pressure_Pong.Create();
